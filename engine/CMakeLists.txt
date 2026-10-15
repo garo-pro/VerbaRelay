@@ -42,7 +42,11 @@ endif()
 
 # Make every library find its siblings in its own directory on Linux.
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-set(CMAKE_INSTALL_RPATH "$ORIGIN")
+if (APPLE)
+    set(CMAKE_INSTALL_RPATH "@loader_path")
+else()
+    set(CMAKE_INSTALL_RPATH "$ORIGIN")
+endif()
 
 if (VR_WHISPER_CPP_SOURCE_DIR)
     add_subdirectory(${VR_WHISPER_CPP_SOURCE_DIR} whisper.cpp EXCLUDE_FROM_ALL)
@@ -66,7 +70,7 @@ set_target_properties(vr_engine PROPERTIES CXX_VISIBILITY_PRESET hidden)
 # Every backend module that was configured, so that `cmake --build` builds them
 # even though whisper.cpp itself is EXCLUDE_FROM_ALL.
 set(VR_BACKEND_TARGETS "")
-foreach(candidate ggml-vulkan ggml-cuda)
+foreach(candidate ggml-vulkan ggml-cuda ggml-metal ggml-blas)
     if (TARGET ${candidate})
         list(APPEND VR_BACKEND_TARGETS ${candidate})
     endif()
