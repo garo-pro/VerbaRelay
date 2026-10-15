@@ -35,7 +35,7 @@ semver = "1"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-tungstenite = { version = "0.27", default-features = false, features = ["connect", "handshake", "__rustls-tls"] }
