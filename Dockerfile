@@ -5,7 +5,7 @@
 #   cp config/server.example.toml config/server.toml   # then edit it
 #   docker run -d -p 8443:8443 -v ./config:/etc/verbarelay:ro -v verbarelay-data:/var/lib/verbarelay verbarelay-server
 
-FROM rust:1.97-slim-trixie AS build
+FROM rust:1.98-slim-trixie AS build
 WORKDIR /src
 # Cargo needs every workspace member's manifest, so the whole workspace is copied
 # (see .dockerignore); only the server is built.
