@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: |
-          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DWM_CPU_ALL_VARIANTS=OFF
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_CPU_ALL_VARIANTS=OFF
           cmake --build build/engine --parallel
           cmake --install build/engine --prefix dist/engine
       - name: Check exported symbols

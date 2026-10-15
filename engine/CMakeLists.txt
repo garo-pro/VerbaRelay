@@ -6,7 +6,7 @@ project(verbarelay_engine LANGUAGES C CXX)
 # loaded at runtime, so one client build supports CPU, Vulkan and CUDA:
 #
 #   cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release \
-#         -DWM_VULKAN=ON -DWM_CUDA=ON
+#         -DVR_VULKAN=ON -DVR_CUDA=ON
 #   cmake --build build/engine --config Release
 #   cmake --install build/engine --prefix dist/engine
 #

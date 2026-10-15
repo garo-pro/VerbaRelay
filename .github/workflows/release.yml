@@ -83,7 +83,7 @@ jobs:
       - name: Native engine (CPU variants, Vulkan, CUDA)
         shell: pwsh
         run: |
-          cmake -S engine -B build/engine -G "Visual Studio 17 2022" -A x64 -DWM_VULKAN=ON -DWM_CUDA=ON -DWM_CPU_ALL_VARIANTS=ON
+          cmake -S engine -B build/engine -G "Visual Studio 17 2022" -A x64 -DVR_VULKAN=ON -DVR_CUDA=ON -DVR_CPU_ALL_VARIANTS=ON
           cmake --build build/engine --config Release --parallel
           cmake --install build/engine --config Release --prefix dist/engine
       - name: Client
@@ -122,7 +122,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Native engine (CPU variants, Vulkan, CUDA)
         run: |
-          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DWM_VULKAN=ON -DWM_CUDA=ON -DWM_CPU_ALL_VARIANTS=ON
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_VULKAN=ON -DVR_CUDA=ON -DVR_CPU_ALL_VARIANTS=ON
           cmake --build build/engine --parallel
           cmake --install build/engine --prefix dist/engine
       - name: Client

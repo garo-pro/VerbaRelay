@@ -272,7 +272,7 @@ SDK, CUDA Toolkit 12. On Linux the GUI needs `libgtk-3-dev`.
 
 ```sh
 # Native engine (whisper.cpp with runtime-loadable backends)
-cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DWM_VULKAN=ON -DWM_CUDA=ON
+cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_VULKAN=ON -DVR_CUDA=ON
 cmake --build build/engine --parallel
 cmake --install build/engine --prefix dist/engine
 

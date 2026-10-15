@@ -1,7 +1,7 @@
 # Collects every target defined anywhere in the build tree whose name matches
 # `pattern` into `out_var`.
 
-function(_wm_collect_dir dir pattern out_var)
+function(_vr_collect_dir dir pattern out_var)
     get_property(targets DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
     set(result "")
     foreach(target ${targets})
@@ -14,13 +14,13 @@ function(_wm_collect_dir dir pattern out_var)
     endforeach()
     get_property(subdirs DIRECTORY ${dir} PROPERTY SUBDIRECTORIES)
     foreach(subdir ${subdirs})
-        _wm_collect_dir(${subdir} "${pattern}" sub_result)
+        _vr_collect_dir(${subdir} "${pattern}" sub_result)
         list(APPEND result ${sub_result})
     endforeach()
     set(${out_var} ${result} PARENT_SCOPE)
 endfunction()
 
 function(vr_collect_targets out_var pattern)
-    _wm_collect_dir(${CMAKE_SOURCE_DIR} "${pattern}" result)
+    _vr_collect_dir(${CMAKE_SOURCE_DIR} "${pattern}" result)
     set(${out_var} ${result} PARENT_SCOPE)
 endfunction()
