@@ -70,7 +70,7 @@ jobs:
         id: cuda
         uses: Jimver/cuda-toolkit@v0.2.24
         with:
-          cuda: "12.6.3"
+          cuda: "12.8.1"
           method: network
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust", "visual_studio_integration"]'
       - name: Vulkan SDK
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-22.04
     # The CUDA development image brings nvcc, the runtime and cuBLAS; Ubuntu 22.04
     # keeps the glibc requirement of the release low.
-    container: nvidia/cuda:12.6.3-devel-ubuntu22.04
+    container: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
       VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
     steps:

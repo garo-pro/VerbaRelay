@@ -41,7 +41,7 @@ fn parse_wav_16k_mono(bytes: &[u8]) -> anyhow::Result<Vec<i16>> {
             if !format_ok {
                 bail!("the benchmark sample must be 16 kHz mono 16-bit");
             }
-            return Ok(body.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect());
+            return Ok(verbarelay_protocol::frames::bytes_to_pcm(body));
         }
         pos += 8 + len + (len & 1);
     }
