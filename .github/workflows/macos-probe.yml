@@ -1,0 +1,41 @@
+name: macOS probe
+
+# Throwaway feasibility check for a macOS client; not meant to be merged.
+on:
+  push:
+    branches: [probe/macos]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  probe:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Engine with Metal
+        run: |
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_CPU_ALL_VARIANTS=OFF -DGGML_METAL=ON
+          cmake --build build/engine --parallel
+          cmake --install build/engine --prefix dist/engine
+          ls -la dist/engine/lib
+          for f in dist/engine/lib/*.dylib dist/engine/lib/*.so; do [ -e "$f" ] && { echo "== $f"; otool -L "$f"; otool -l "$f" | grep -A2 LC_RPATH || true; }; done
+      - name: Client tests (no GUI)
+        if: always()
+        run: cargo test -p verbarelay-client --no-default-features
+      - name: Client build (GUI)
+        id: gui
+        if: always()
+        run: cargo build --release -p verbarelay-client
+      - name: Client build (no GUI)
+        if: always() && steps.gui.outcome != 'success'
+        run: cargo build --release -p verbarelay-client --no-default-features
+      - name: Detect devices
+        if: always()
+        run: |
+          mkdir -p probe
+          cp target/release/verbarelay-client probe/
+          cp dist/engine/lib/* probe/
+          ./probe/verbarelay-client detect-devices
