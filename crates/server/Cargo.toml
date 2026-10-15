@@ -1,0 +1,45 @@
+[package]
+name = "verbarelay-server"
+description = "Coordinator that distributes transcription jobs to VerbaRelay peers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "verbarelay-server"
+path = "src/main.rs"
+
+[dependencies]
+verbarelay-protocol.workspace = true
+
+anyhow.workspace = true
+argon2 = "0.5"
+base64.workspace = true
+axum = { version = "0.8", features = ["ws", "multipart"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap.workspace = true
+futures-util.workspace = true
+rand.workspace = true
+rpassword = "7"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+symphonia = { version = "0.5", features = ["all"] }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream = "0.1"
+tokio-util = "0.7"
+toml.workspace = true
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

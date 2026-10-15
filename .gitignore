@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Native engine builds
+/build/
+/dist/
+engine/build/
+
+# Local configuration and data
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+/config/server.toml
+/config/client.toml
+peer.key
+*.pem
+*.minisign
+!*.pub.minisign
+
+# Models and logs
+*.bin
+*.partial
+logs/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

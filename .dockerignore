@@ -1,0 +1,16 @@
+# Only sources are needed to build the server image.
+.git/
+.github/
+target/
+build/
+dist/
+engine/build/
+logs/
+config/*.toml
+!config/*.example.toml
+*.pem
+*.key
+peer.key
+*.minisign
+*.sqlite3*
+*.bin

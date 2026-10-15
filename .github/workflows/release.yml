@@ -1,0 +1,206 @@
+name: Release
+
+# Stable releases: push a tag "vX.Y.Z" that matches the workspace version.
+# Development builds: every push to main replaces the rolling "dev" pre-release.
+#
+# Required repository settings:
+#   secret   MINISIGN_SECRET_KEY  content of a minisign secret key file created
+#                                 without a password: `minisign -G -W -s release.key`
+#   variable MINISIGN_PUBLIC_KEY  the base64 public key (second line of release.pub)
+# Clients verify every update and the CUDA package with this public key.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  VERBARELAY_UPDATE_REPO: ${{ github.repository }}
+  VERBARELAY_UPDATE_PUBKEY: ${{ vars.MINISIGN_PUBLIC_KEY }}
+  VERBARELAY_COMMIT: ${{ github.sha }}
+  VULKAN_VERSION: 1.4.313.2
+
+jobs:
+  meta:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.meta.outputs.label }}
+      channel: ${{ steps.meta.outputs.channel }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            if [ "$tag" != "$version" ]; then
+              echo "::error::tag v$tag does not match workspace version $version"
+              exit 1
+            fi
+            echo "label=$version" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=dev" >> "$GITHUB_OUTPUT"
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+  client-windows:
+    name: Client (Windows)
+    needs: meta
+    runs-on: windows-2022
+    env:
+      VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: CUDA toolkit
+        id: cuda
+        uses: Jimver/cuda-toolkit@v0.2.24
+        with:
+          cuda: "12.6.3"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust", "visual_studio_integration"]'
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          curl.exe -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" -L "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$env:VULKAN_VERSION\bin"
+      - name: Native engine (CPU variants, Vulkan, CUDA)
+        shell: pwsh
+        run: |
+          cmake -S engine -B build/engine -G "Visual Studio 17 2022" -A x64 -DWM_VULKAN=ON -DWM_CUDA=ON -DWM_CPU_ALL_VARIANTS=ON
+          cmake --build build/engine --config Release --parallel
+          cmake --install build/engine --config Release --prefix dist/engine
+      - name: Client
+        run: cargo build --release -p verbarelay-client
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package-client.ps1 -Label "${{ needs.meta.outputs.label }}" -Binary target/release/verbarelay-client.exe -Engine dist/engine/bin -CudaBin "${{ steps.cuda.outputs.CUDA_PATH }}\bin" -Out dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-windows
+          path: dist/release/*.zip
+
+  client-linux:
+    name: Client (Linux)
+    needs: meta
+    runs-on: ubuntu-22.04
+    # The CUDA development image brings nvcc, the runtime and cuBLAS; Ubuntu 22.04
+    # keeps the glibc requirement of the release low.
+    container: nvidia/cuda:12.6.3-devel-ubuntu22.04
+    env:
+      VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
+    steps:
+      - name: Build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates build-essential pkg-config python3-pip zip \
+            libgtk-3-dev gnupg
+          pip3 install "cmake>=3.28"
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc > /etc/apt/trusted.gpg.d/lunarg.asc
+          wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends vulkan-sdk
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Native engine (CPU variants, Vulkan, CUDA)
+        run: |
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DWM_VULKAN=ON -DWM_CUDA=ON -DWM_CPU_ALL_VARIANTS=ON
+          cmake --build build/engine --parallel
+          cmake --install build/engine --prefix dist/engine
+      - name: Client
+        run: cargo build --release -p verbarelay-client
+      - name: Package
+        run: scripts/package-client.sh "${{ needs.meta.outputs.label }}" target/release/verbarelay-client dist/engine/lib /usr/local/cuda/lib64 dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-linux
+          path: dist/release/*.zip
+
+  server-linux:
+    name: Server (Linux)
+    needs: meta
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p verbarelay-server
+      - name: Package
+        run: |
+          name="verbarelay-server-${{ needs.meta.outputs.label }}-linux-x86_64"
+          mkdir -p "dist/$name"
+          cp target/release/verbarelay-server config/server.example.toml packaging/systemd/verbarelay-server.service LICENSE README.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-linux
+          path: dist/*.tar.gz
+
+  publish:
+    name: Sign and publish
+    needs: [meta, client-windows, client-linux, server-linux]
+    # Skipped until the signing key is configured (see the header of this file).
+    if: vars.MINISIGN_PUBLIC_KEY != ''
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: ${{ needs.meta.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::the MINISIGN_SECRET_KEY secret is missing"
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/release.key"
+          for file in artifacts/*.zip artifacts/*.tar.gz; do
+            minisign -S -s "$RUNNER_TEMP/release.key" -m "$file" -t "VerbaRelay $LABEL $(basename "$file")"
+          done
+          rm -f "$RUNNER_TEMP/release.key"
+          ls -l artifacts
+      - name: Stable release
+        if: needs.meta.outputs.channel == 'stable'
+        run: |
+          gh release create "v$LABEL" artifacts/* \
+            --title "VerbaRelay $LABEL" \
+            --generate-notes \
+            --verify-tag
+      - name: Development build
+        if: needs.meta.outputs.channel == 'dev'
+        run: |
+          printf '{"commit":"%s","version":"%s","built_at":"%s"}\n' \
+            "$GITHUB_SHA" "${{ needs.meta.outputs.version }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > artifacts/dev-build.json
+          gh release delete dev --cleanup-tag --yes || true
+          gh release create dev artifacts/* \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Development build" \
+            --notes "Automatic build of ${GITHUB_SHA::8}. Clients with development builds enabled install it automatically."

@@ -1,0 +1,26 @@
+# Collects every target defined anywhere in the build tree whose name matches
+# `pattern` into `out_var`.
+
+function(_wm_collect_dir dir pattern out_var)
+    get_property(targets DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
+    set(result "")
+    foreach(target ${targets})
+        if (target MATCHES "${pattern}")
+            get_target_property(target_type ${target} TYPE)
+            if (target_type STREQUAL "MODULE_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
+                list(APPEND result ${target})
+            endif()
+        endif()
+    endforeach()
+    get_property(subdirs DIRECTORY ${dir} PROPERTY SUBDIRECTORIES)
+    foreach(subdir ${subdirs})
+        _wm_collect_dir(${subdir} "${pattern}" sub_result)
+        list(APPEND result ${sub_result})
+    endforeach()
+    set(${out_var} ${result} PARENT_SCOPE)
+endfunction()
+
+function(vr_collect_targets out_var pattern)
+    _wm_collect_dir(${CMAKE_SOURCE_DIR} "${pattern}" result)
+    set(${out_var} ${result} PARENT_SCOPE)
+endfunction()

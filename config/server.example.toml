@@ -1,0 +1,85 @@
+# VerbaRelay server configuration.
+# Copy this file to /etc/verbarelay/server.toml and adjust it.
+
+[server]
+# Address and port to listen on. Peers and API callers connect here.
+bind = "0.0.0.0:8443"
+# Database and (by default) log files live here.
+data_dir = "/var/lib/verbarelay"
+# Only enable this when the server runs behind a reverse proxy you control;
+# the client address is then taken from the X-Forwarded-For header.
+trust_forwarded_for = false
+# Largest accepted audio upload in MiB.
+max_upload_mb = 512
+
+# Serve HTTPS directly. Remove this section only if a reverse proxy terminates
+# TLS in front of the server. Audio is encrypted per peer in any case.
+[tls]
+cert = "/etc/verbarelay/fullchain.pem"
+key = "/etc/verbarelay/privkey.pem"
+
+[enrollment]
+# Asked for once when a new client is set up. Use at least 12 characters.
+# Better: store only a hash, created with `verbarelay-server hash-password`:
+# master_password_hash = "$argon2id$v=19$..."
+master_password = "change-this-master-password"
+# A peer that has not connected for this many days loses its token and has to
+# be set up again with the master password.
+peer_token_ttl_days = 14
+
+[models]
+# The server dictates which model peers transcribe with.
+# When false, every peer uses the model from its own configuration file.
+enforce = true
+# Model used for every job unless a request overrides it.
+default = "large-v3-turbo"
+# API requests may pick another model from `allowed`. When false, a requested
+# model is ignored and the response carries a notice explaining why.
+allow_request_override = true
+# Models a request may ask for. Peers download a model the first time it is needed.
+allowed = ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny"]
+
+# Models outside the built-in catalog can be added like this:
+# [[models.custom]]
+# name = "my-finetune"
+# url = "https://example.com/ggml-my-finetune.bin"
+# sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# size = 1234567890
+
+[scheduling]
+# Seconds a peer has to answer a job offer before the next peer is asked.
+offer_timeout_secs = 5
+# Seconds a job may wait for a free peer before it fails.
+queue_timeout_secs = 300
+# How often a job is handed to another peer after a peer failed.
+max_attempts = 3
+# A job may take at most (audio length x factor), but at least two minutes.
+job_timeout_factor = 4.0
+
+[splitting]
+# Split long recordings at pauses and transcribe the parts on several idle peers.
+enabled = true
+# Only recordings at least this long (seconds) are split.
+min_duration_secs = 600
+# No part is shorter than this (seconds).
+min_part_secs = 180
+# Upper limit of parts per recording.
+max_parts = 8
+
+[rate_limit]
+# Sustained requests per minute and API token.
+requests_per_minute = 30
+# Requests an API token may send in a short burst.
+burst = 10
+# Jobs per API token that may be queued or running at the same time.
+max_active_jobs_per_token = 4
+# Enrollment attempts per minute and client address (protects the master password).
+enroll_attempts_per_minute = 5
+
+[logging]
+# trace, debug, info, warn or error. The RUST_LOG environment variable overrides it.
+level = "info"
+# "text" for humans, "json" for log collectors.
+format = "text"
+# Daily rotated log files. Defaults to <data_dir>/logs.
+# dir = "/var/log/verbarelay"

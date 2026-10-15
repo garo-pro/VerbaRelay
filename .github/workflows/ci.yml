@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-and-test:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      # The GUI is checked in its own job; it needs a full wxWidgets build.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+      - name: Test
+        run: cargo test --workspace --no-default-features
+
+  engine:
+    name: Native engine (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DWM_CPU_ALL_VARIANTS=OFF
+          cmake --build build/engine --parallel
+          cmake --install build/engine --prefix dist/engine
+      - name: Check exported symbols
+        run: nm -D dist/engine/lib/libvr_engine.so | grep -q vr_engine_transcribe
+
+  gui:
+    name: Client with GUI (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: GTK headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
+      - name: Check
+        run: cargo check -p verbarelay-client
+
+  docker:
+    name: Server Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: verbarelay-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker run --rm verbarelay-server:ci --version
+          mkdir -p "$RUNNER_TEMP/config"
+          python3 - "$RUNNER_TEMP/config/server.toml" <<'PY'
+          import re, sys
+          text = open("config/server.example.toml").read()
+          text = re.sub(r"\n\[tls\]\ncert = .*\nkey = .*\n", "\n", text)
+          open(sys.argv[1], "w").write(text)
+          PY
+          chmod -R a+rX "$RUNNER_TEMP/config"
+          docker run --rm -v "$RUNNER_TEMP/config:/etc/verbarelay:ro" verbarelay-server:ci check-config

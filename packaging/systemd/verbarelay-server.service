@@ -1,0 +1,32 @@
+[Unit]
+Description=VerbaRelay server (distributes transcription jobs)
+Documentation=https://github.com/garo-pro/VerbaRelay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=verbarelay
+Group=verbarelay
+ExecStart=/usr/local/bin/verbarelay-server --config /etc/verbarelay/server.toml serve
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/verbarelay
+StateDirectory=verbarelay
+# Allow binding ports below 1024 without root (e.g. 443).
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

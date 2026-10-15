@@ -1,0 +1,57 @@
+[package]
+name = "verbarelay-client"
+description = "Background peer that transcribes audio for a VerbaRelay server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "verbarelay-client"
+path = "src/main.rs"
+
+[features]
+default = ["gui"]
+# Native setup and settings windows (wxWidgets). Without it, setup runs in the terminal.
+gui = ["dep:wxdragon"]
+
+[dependencies]
+verbarelay-protocol.workspace = true
+
+anyhow.workspace = true
+base64.workspace = true
+clap.workspace = true
+directories = "6"
+futures-util.workspace = true
+libloading = "0.8"
+minisign-verify = "0.2"
+rand.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-manual-roots-no-provider", "http2"] }
+rpassword = "7"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = "2"
+semver = "1"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite = { version = "0.27", default-features = false, features = ["connect", "handshake", "__rustls-tls"] }
+tokio-util = "0.7"
+toml.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+webpki-roots = "1"
+wxdragon = { version = "0.9", optional = true }
+zeroize.workspace = true
+zip = { version = "4", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[dev-dependencies]
+tempfile = "3"

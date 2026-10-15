@@ -1,0 +1,23 @@
+# systemd user unit for headless Linux peers.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp verbarelay-client.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now verbarelay-client
+#   loginctl enable-linger "$USER"   # keep running without a login session
+#
+# Set the client up once before: verbarelay-client setup
+
+[Unit]
+Description=VerbaRelay client (background transcription peer)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/verbarelay-client/verbarelay-client --headless
+# The client exits after installing an update; systemd starts the new version.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

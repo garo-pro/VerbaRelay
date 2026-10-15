@@ -1,0 +1,32 @@
+# VerbaRelay client configuration.
+# The setup writes this file to:
+#   Windows: %APPDATA%\verbarelay\config\client.toml
+#   Linux:   ~/.config/verbarelay/client.toml
+# Editing by hand is fine; run `verbarelay-client reload` afterwards.
+
+# Address of the VerbaRelay server.
+server_url = "https://transcribe.example.com:8443"
+# Name of this device on the server.
+device_name = "desktop"
+# Compute backend: "cuda" (NVIDIA), "vulkan" (any GPU) or "cpu".
+backend = "cuda"
+# Model used only when the server does not dictate one.
+model = "large-v3-turbo"
+# CPU threads for transcription; 0 picks a sensible number.
+threads = 0
+# Trust an additional CA certificate (for servers with a private CA).
+# ca_certificate = "/path/to/ca.pem"
+# Allow http:// servers. Only for local testing.
+allow_insecure = false
+
+# Written by the setup. The token identifies this device; keep it private.
+# [credentials]
+# peer_id = "00000000-0000-0000-0000-000000000000"
+# token = "vrp_..."
+
+# The two user settings, also available in the settings window.
+[updates]
+# Hours between update checks.
+check_interval_hours = 6
+# Also install development builds.
+include_dev_builds = false

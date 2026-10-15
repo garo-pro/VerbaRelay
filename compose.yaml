@@ -1,0 +1,23 @@
+# Example deployment of the VerbaRelay server.
+#
+# 1. cp config/server.example.toml config/server.toml
+# 2. Edit config/server.toml: change the master password; either put fullchain.pem
+#    and privkey.pem into ./config (the example paths already match), or remove
+#    [tls] and run behind a TLS-terminating reverse proxy. Keep data_dir and the
+#    port of `bind` as they are. The container runs as uid 10001, which must be
+#    able to read the files.
+# 3. docker compose up -d
+# Admin commands: docker compose exec server verbarelay-server tokens create my-app
+services:
+  server:
+    build: .
+    image: verbarelay-server
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./config:/etc/verbarelay:ro
+      - data:/var/lib/verbarelay
+
+volumes:
+  data:
