@@ -38,7 +38,7 @@ jobs:
       channel: ${{ steps.meta.outputs.channel }}
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: meta
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
@@ -63,12 +63,12 @@ jobs:
     env:
       VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: CUDA toolkit
         id: cuda
-        uses: Jimver/cuda-toolkit@v0.2.24
+        uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: "12.8.1"
           method: network
@@ -91,7 +91,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: ./scripts/package-client.ps1 -Label "${{ needs.meta.outputs.label }}" -Binary target/release/verbarelay-client.exe -Engine dist/engine/bin -CudaBin "${{ steps.cuda.outputs.CUDA_PATH }}\bin" -Out dist/release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-windows
           path: dist/release/*.zip
@@ -117,7 +117,7 @@ jobs:
           wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends vulkan-sdk
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Native engine (CPU variants, Vulkan, CUDA)
@@ -129,7 +129,7 @@ jobs:
         run: cargo build --release -p verbarelay-client
       - name: Package
         run: scripts/package-client.sh "${{ needs.meta.outputs.label }}" target/release/verbarelay-client dist/engine/lib /usr/local/cuda/lib64 dist/release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-linux
           path: dist/release/*.zip
@@ -139,7 +139,7 @@ jobs:
     needs: meta
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
@@ -150,7 +150,7 @@ jobs:
           mkdir -p "dist/$name"
           cp target/release/verbarelay-server config/server.example.toml packaging/systemd/verbarelay-server.service LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: server-linux
           path: dist/*.tar.gz
@@ -165,8 +165,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       LABEL: ${{ needs.meta.outputs.label }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
