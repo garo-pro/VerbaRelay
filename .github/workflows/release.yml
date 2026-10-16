@@ -125,7 +125,9 @@ jobs:
       - name: Native engine (CPU variants, Vulkan, CUDA)
         run: |
           cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_VULKAN=ON -DVR_CUDA=ON -DVR_CPU_ALL_VARIANTS=ON
-          cmake --build build/engine --parallel
+          # Makefiles treat a bare --parallel as unlimited jobs, and that many
+          # CUDA compiles at once exhaust the runner's memory.
+          cmake --build build/engine --parallel "$(nproc)"
           cmake --install build/engine --prefix dist/engine
       - name: Client
         run: cargo build --release -p verbarelay-client
