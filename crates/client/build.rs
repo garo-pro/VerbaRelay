@@ -7,8 +7,16 @@
 //! * `VERBARELAY_UPDATE_PUBKEY`: minisign public key (base64) that signs releases.
 //!
 //! Without a repository and a public key, automatic updates are disabled.
+//!
+//! On Windows it also embeds an application manifest. wxWidgets requires the
+//! Common Controls v6 dependency it declares and warns at startup without it.
 
 fn main() {
+    if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
+        embed_manifest::embed_manifest(embed_manifest::new_manifest("VerbaRelay.Client"))
+            .expect("unable to embed the Windows application manifest");
+    }
+    println!("cargo:rerun-if-changed=build.rs");
     for var in [
         "VERBARELAY_COMMIT",
         "GITHUB_SHA",
