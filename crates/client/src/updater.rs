@@ -5,7 +5,7 @@
 //! download is verified with minisign before it is used. Unlike ship-shape this
 //! updater has no user interface at all and also runs on Linux:
 //!
-//! 1. check GitHub releases every N hours (the user setting),
+//! 1. check GitHub releases every N minutes (the user setting) or when asked from the tray,
 //! 2. download and verify the archive in the background (no progress bar),
 //! 3. wait until no transcription is running,
 //! 4. swap the files and restart.
@@ -18,10 +18,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{debug, info, warn};
 
 use crate::config::UpdateSettings;
+use crate::ipc::UpdateCheck;
 use crate::release::{self, BuildInfo, Release};
 
 /// An update that is downloaded, verified and extracted, ready to be applied.
@@ -210,54 +211,96 @@ pub fn restart() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Background loop: checks on the configured interval and hands staged updates to the agent.
+/// Background loop: checks on the configured interval and on request, and
+/// hands a staged update to the agent.
 pub async fn run(
     mut settings: watch::Receiver<UpdateSettings>,
     install_dir: PathBuf,
     data_dir: PathBuf,
     staged_tx: mpsc::Sender<StagedUpdate>,
+    mut manual: mpsc::Receiver<UpdateCheck>,
 ) {
     let info = BuildInfo::current();
-    if !info.updates_configured() {
+    let client = if info.updates_configured() {
+        crate::net::download_client()
+            .inspect_err(|e| warn!("updater disabled: {e:#}"))
+            .ok()
+    } else {
         info!("automatic updates are not configured for this build");
-        return;
-    }
-    let client = match crate::net::download_client() {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("updater disabled: {e:#}");
-            return;
+        None
+    };
+    let Some(client) = client else {
+        while let Some(reply) = manual.recv().await {
+            let _ = reply.send("Automatic updates are not available in this build.".into());
         }
+        return;
     };
     // First check shortly after start, then on the interval.
     let mut wait = Duration::from_secs(60);
+    let mut staged: Option<String> = None;
     loop {
-        tokio::select! {
-            () = tokio::time::sleep(wait) => {}
+        let reply = tokio::select! {
+            () = tokio::time::sleep(wait), if staged.is_none() => None,
             changed = settings.changed() => {
                 if changed.is_err() { return; }
                 // Settings changed: check soon with the new settings.
                 wait = Duration::from_secs(5);
                 continue;
             }
+            request = manual.recv() => match request {
+                Some(reply) => Some(reply),
+                None => return,
+            },
+        };
+        if let Some(description) = &staged {
+            answer(reply, format!("{description} is already downloaded. {INSTALL_NOTE}"));
+            continue;
         }
         let current = settings.borrow().clone();
-        wait = Duration::from_secs(u64::from(current.check_interval_hours) * 3600);
+        wait = Duration::from_secs(u64::from(current.check_interval_minutes) * 60);
         match check(&client, &info, &current).await {
             Ok(Some(candidate)) => {
                 info!(update = %candidate.description, "update available");
+                crate::tones::play(crate::tones::Tone::UpdateFound);
+                let description = capitalized(&candidate.description);
+                answer(
+                    reply,
+                    format!("{description} is available and is being downloaded. {INSTALL_NOTE}"),
+                );
                 match stage(&client, &info, &candidate, &install_dir, &data_dir).await {
-                    Ok(staged) => {
-                        let _ = staged_tx.send(staged).await;
-                        return;
+                    Ok(update) => {
+                        staged = Some(description);
+                        let _ = staged_tx.send(update).await;
                     }
                     Err(e) => warn!("downloading the update failed: {e:#}"),
                 }
             }
-            Ok(None) => debug!("no update available"),
-            Err(e) => warn!("update check failed: {e:#}"),
+            Ok(None) => {
+                debug!("no update available");
+                answer(reply, format!("No update available. This is {}.", info.describe()));
+            }
+            Err(e) => {
+                warn!("update check failed: {e:#}");
+                answer(reply, format!("The update check failed: {e:#}"));
+            }
         }
     }
+}
+
+const INSTALL_NOTE: &str = "It is installed automatically when no transcription is running.";
+
+fn answer(reply: Option<oneshot::Sender<String>>, text: String) {
+    if let Some(reply) = reply {
+        let _ = reply.send(text);
+    }
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -296,7 +339,7 @@ mod tests {
     fn dev_updates_follow_commits() {
         let releases = vec![rel("v0.1.0", false), rel("dev", true)];
         let settings = UpdateSettings {
-            check_interval_hours: 6,
+            check_interval_minutes: 360,
             include_dev_builds: true,
         };
         let c = pick_candidate(&info("0.1.0", "stable", "aaa"), &settings, &releases, Some("bbb")).unwrap();

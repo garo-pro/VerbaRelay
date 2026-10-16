@@ -24,9 +24,15 @@ allow_insecure = false
 # peer_id = "00000000-0000-0000-0000-000000000000"
 # token = "vrp_..."
 
-# The two user settings, also available in the settings window.
+# User settings, also available in the settings window.
 [updates]
-# Hours between update checks.
-check_interval_hours = 6
+# Minutes between update checks (5 to 43200).
+check_interval_minutes = 300
 # Also install development builds.
 include_dev_builds = false
+
+[tones]
+# Play tones on startup, updates, restart and shutdown. The sounds are built in.
+enabled = true
+# Also play a tone when a transcription job arrives and finishes (needs enabled = true).
+jobs = false

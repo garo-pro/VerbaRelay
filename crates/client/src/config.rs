@@ -1,6 +1,6 @@
 //! Client configuration and file locations.
 //!
-//! * Configuration: `<config dir>/client.toml` (server, token, backend, update settings)
+//! * Configuration: `<config dir>/client.toml` (server, token, backend, update and tone settings)
 //! * Private key:   `<config dir>/peer.key` (never leaves the device)
 //! * Models, logs:  `<data dir>/models`, `<data dir>/logs`
 //! * Program files: the directory of the executable (native libraries live next to it)
@@ -42,6 +42,8 @@ pub struct ClientConfig {
     pub credentials: Option<Credentials>,
     #[serde(default)]
     pub updates: UpdateSettings,
+    #[serde(default)]
+    pub tones: ToneSettings,
 }
 
 /// What the server handed out during enrollment.
@@ -52,30 +54,80 @@ pub struct Credentials {
     pub token: String,
 }
 
-/// The only user-facing settings.
+/// Update check intervals offered in the settings window, in minutes.
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
+pub const INTERVAL_PRESETS: [u32; 7] = [10, 30, 60, 120, 180, 300, 600];
+/// Bounds of a custom interval, in minutes (5 minutes to 30 days).
+pub const MIN_INTERVAL: u32 = 5;
+pub const MAX_INTERVAL: u32 = 30 * 24 * 60;
+const DEFAULT_INTERVAL: u32 = 300;
+
+/// When to look for updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "UpdateSettingsFile")]
+pub struct UpdateSettings {
+    /// Minutes between update checks.
+    pub check_interval_minutes: u32,
+    /// Also install development builds.
+    pub include_dev_builds: bool,
+}
+
+/// [`UpdateSettings`] as read from the file, which may still use the older
+/// `check_interval_hours`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateSettingsFile {
+    check_interval_minutes: Option<u32>,
+    check_interval_hours: Option<u32>,
+    #[serde(default)]
+    include_dev_builds: bool,
+}
+
+impl From<UpdateSettingsFile> for UpdateSettings {
+    fn from(file: UpdateSettingsFile) -> Self {
+        Self {
+            check_interval_minutes: file
+                .check_interval_minutes
+                .or(file.check_interval_hours.map(|h| h.saturating_mul(60)))
+                .unwrap_or(DEFAULT_INTERVAL),
+            include_dev_builds: file.include_dev_builds,
+        }
+    }
+}
+
+/// Notification tones. The sounds themselves are built in.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UpdateSettings {
-    /// Hours between update checks.
-    #[serde(default = "default_interval")]
-    pub check_interval_hours: u32,
-    /// Also install development builds.
+pub struct ToneSettings {
+    /// Play tones at all (startup, updates, restart, shutdown).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Also play a tone when a transcription job arrives and when it finishes.
     #[serde(default)]
-    pub include_dev_builds: bool,
+    pub jobs: bool,
+}
+
+impl Default for ToneSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            jobs: false,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_model() -> String {
     models::DEFAULT_MODEL.to_string()
 }
 
-fn default_interval() -> u32 {
-    6
-}
-
 impl Default for UpdateSettings {
     fn default() -> Self {
         Self {
-            check_interval_hours: default_interval(),
+            check_interval_minutes: DEFAULT_INTERVAL,
             include_dev_builds: false,
         }
     }
@@ -93,6 +145,7 @@ impl ClientConfig {
             allow_insecure: false,
             credentials: None,
             updates: UpdateSettings::default(),
+            tones: ToneSettings::default(),
         }
     }
 
@@ -114,8 +167,8 @@ impl ClientConfig {
 
     pub fn validate(&self) -> anyhow::Result<()> {
         normalize_server_url(&self.server_url, self.allow_insecure)?;
-        if self.updates.check_interval_hours == 0 || self.updates.check_interval_hours > 24 * 30 {
-            bail!("updates.check_interval_hours must be between 1 and 720");
+        if !(MIN_INTERVAL..=MAX_INTERVAL).contains(&self.updates.check_interval_minutes) {
+            bail!("updates.check_interval_minutes must be between {MIN_INTERVAL} and {MAX_INTERVAL}");
         }
         Ok(())
     }
@@ -292,5 +345,15 @@ mod tests {
         assert_eq!(loaded.backend, Backend::Cuda);
         assert_eq!(loaded.credentials.unwrap().token, "vrp_x");
         assert_eq!(loaded.updates, UpdateSettings::default());
+        assert_eq!(loaded.tones, ToneSettings::default());
+    }
+
+    #[test]
+    fn interval_in_hours_still_loads() {
+        let settings: UpdateSettings = toml::from_str("check_interval_hours = 6").unwrap();
+        assert_eq!(settings.check_interval_minutes, 360);
+        let settings: UpdateSettings = toml::from_str("check_interval_minutes = 10").unwrap();
+        assert_eq!(settings.check_interval_minutes, 10);
+        assert!(toml::from_str::<UpdateSettings>("check_every = 1").is_err());
     }
 }

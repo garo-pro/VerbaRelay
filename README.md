@@ -128,7 +128,9 @@ by it. Logs go to stdout (`docker compose logs`) and to `/var/lib/verbarelay/log
    preselects the recommended backend. Choosing CUDA downloads the CUDA
    package.
 3. From then on the client runs in the background and starts with Windows.
-   Starting the executable again opens the settings window.
+   Its tray icon shows whether it is connected or transcribing; its menu opens
+   the settings, checks for updates right away and exits the client. Starting
+   the executable again also opens the settings window.
 
 The windows use native controls with labelled fields and are fully usable with
 screen readers such as NVDA.
@@ -157,7 +159,7 @@ systemctl --user enable --now verbarelay-client
 |---|---|
 | `verbarelay-client` | Run in the background (set up on first start; opens the settings if already running) |
 | `verbarelay-client setup` | Set up this device again |
-| `verbarelay-client settings` | Update interval and development builds |
+| `verbarelay-client settings` | Update interval, development builds and tones |
 | `verbarelay-client status` | Status of the running client |
 | `verbarelay-client reload` | Reload the configuration file |
 | `verbarelay-client benchmark` | Measure the transcription score |
@@ -232,8 +234,9 @@ Unauthenticated liveness probe.
 
 * Server: [`config/server.example.toml`](config/server.example.toml), every option commented.
 * Client: [`config/client.example.toml`](config/client.example.toml). The only
-  user settings are the update interval and whether to install development
-  builds; everything else is written by the setup.
+  user settings are the update interval, whether to install development
+  builds, and the notification tones (on or off, and separately for
+  transcription jobs); everything else is written by the setup.
 
 ## Statistics and logs
 

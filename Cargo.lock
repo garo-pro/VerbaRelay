@@ -3069,6 +3069,7 @@ dependencies = [
  "uuid",
  "verbarelay-protocol",
  "webpki-roots",
+ "windows-sys 0.61.2",
  "winreg",
  "wxdragon",
  "zeroize",

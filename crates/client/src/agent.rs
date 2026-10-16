@@ -33,6 +33,7 @@ use crate::config::{ClientConfig, Paths, UpdateSettings};
 use crate::engine::EngineDevice;
 use crate::ipc::{self, SharedStatus};
 use crate::models::ModelStore;
+use crate::tones::{self, Tone};
 use crate::updater::StagedUpdate;
 use crate::worker::{WorkerError, WorkerHandle};
 
@@ -43,6 +44,8 @@ pub enum AgentExit {
     NeedsEnrollment,
     /// An update was applied; restart the executable.
     Restart,
+    /// The user or the system asked the client to stop.
+    Shutdown,
 }
 
 /// How a single connection ended.
@@ -211,6 +214,7 @@ impl Agent {
                         || new.credentials.as_ref().map(|c| &c.token)
                             != self.config.credentials.as_ref().map(|c| &c.token);
                     let _ = self.settings_tx.send(new.updates.clone());
+                    tones::configure(&new.tones);
                     info!("configuration reloaded");
                     self.config = new;
                     reconnect.then(|| "configuration changed".to_string())
@@ -437,6 +441,7 @@ impl Agent {
                                     }
                                     let _ = out_tx.send(json_message(&reply(true, None)));
                                     debug!(%job_id, audio_ms, model = %spec.name, "job accepted");
+                                    tones::play(Tone::JobReceived);
                                     let cancel = CancellationToken::new();
                                     let (audio_tx, audio_rx) = oneshot::channel();
                                     current = Some(CurrentJob { id: job_id, cancel: cancel.clone(), audio_tx: Some(audio_tx), assembly: None });
@@ -501,6 +506,9 @@ impl Agent {
                         if current.as_ref().is_some_and(|j| j.id == job_id) {
                             current = None;
                         }
+                        if succeeded {
+                            tones::play(Tone::JobFinished);
+                        }
                         self.set_status(|s| { s.working = benchmarking; if succeeded { s.jobs_done += 1; } });
                         if let Some(end) = self.track_worker_health(worker_failed, succeeded) {
                             break end;
@@ -539,6 +547,7 @@ impl Agent {
                 }
                 Some(staged) = self.staged_rx.recv() => {
                     info!(update = %staged.description, "update ready; it is installed when the current work is done");
+                    tones::play(Tone::UpdateDownloaded);
                     let description = staged.description.clone();
                     self.set_status(|s| s.pending_update = Some(description));
                     self.staged = Some(staged);

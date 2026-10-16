@@ -4,6 +4,7 @@
 //! secret to `<data dir>/run/agent.json` (readable only by the user). A second
 //! start of the client uses it to detect the running agent, to ask it to reload
 //! the configuration after the settings were changed, and to show its status.
+//! The tray icon also uses it to stop the agent and to check for updates.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -14,7 +15,8 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
 use crate::config::{Paths, write_private};
@@ -50,16 +52,24 @@ pub enum Command {
     Reload,
 }
 
+/// A request to check for updates now, answered with a sentence for the user.
+pub type UpdateCheck = oneshot::Sender<String>;
+
+/// Where the control channel forwards requests.
+#[derive(Clone)]
+pub struct Controls {
+    pub commands: mpsc::Sender<Command>,
+    pub update_checks: mpsc::Sender<UpdateCheck>,
+    /// Cancelled when the client is asked to stop.
+    pub quit: CancellationToken,
+}
+
 fn endpoint_file(paths: &Paths) -> PathBuf {
     paths.runtime_dir.join("agent.json")
 }
 
 /// Starts the control listener. Returns a guard that removes the endpoint file.
-pub async fn serve(
-    paths: &Paths,
-    status: SharedStatus,
-    commands: mpsc::Sender<Command>,
-) -> anyhow::Result<EndpointGuard> {
+pub async fn serve(paths: &Paths, status: SharedStatus, controls: Controls) -> anyhow::Result<EndpointGuard> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
     let port = listener.local_addr()?.port();
     let mut secret_bytes = [0u8; 24];
@@ -80,9 +90,9 @@ pub async fn serve(
             };
             let secret = secret.clone();
             let status = status.clone();
-            let commands = commands.clone();
+            let controls = controls.clone();
             tokio::spawn(async move {
-                if let Err(e) = handle(stream, &secret, &status, &commands).await {
+                if let Err(e) = handle(stream, &secret, &status, &controls).await {
                     debug!("control connection: {e:#}");
                 }
             });
@@ -91,12 +101,7 @@ pub async fn serve(
     Ok(EndpointGuard { file })
 }
 
-async fn handle(
-    stream: TcpStream,
-    secret: &str,
-    status: &SharedStatus,
-    commands: &mpsc::Sender<Command>,
-) -> anyhow::Result<()> {
+async fn handle(stream: TcpStream, secret: &str, status: &SharedStatus, controls: &Controls) -> anyhow::Result<()> {
     let (read, mut write) = stream.into_split();
     let mut line = String::new();
     tokio::time::timeout(Duration::from_secs(5), BufReader::new(read).read_line(&mut line)).await??;
@@ -109,8 +114,23 @@ async fn handle(
         Some("ping") => "pong".to_string(),
         Some("status") => serde_json::to_string(&*status.lock().unwrap())?,
         Some("reload") => {
-            commands.send(Command::Reload).await?;
+            controls.commands.send(Command::Reload).await?;
             "ok".to_string()
+        }
+        Some("check-updates") => {
+            let (tx, rx) = oneshot::channel();
+            let answer = match controls.update_checks.send(tx).await {
+                Ok(()) => rx.await.ok(),
+                Err(_) => None,
+            };
+            answer
+                .unwrap_or_else(|| "The update check is not available right now.".into())
+                .replace('\n', " ")
+        }
+        Some("quit") => {
+            write.write_all(b"ok\n").await?;
+            controls.quit.cancel();
+            return Ok(());
         }
         _ => "unknown command".to_string(),
     };
@@ -139,8 +159,10 @@ pub async fn send(paths: &Paths, command: &str) -> anyhow::Result<String> {
     stream
         .write_all(format!("{} {command}\n", endpoint.secret).as_bytes())
         .await?;
+    // Checking for updates waits for GitHub.
+    let timeout = Duration::from_secs(if command == "check-updates" { 90 } else { 5 });
     let mut reply = String::new();
-    tokio::time::timeout(Duration::from_secs(5), BufReader::new(stream).read_line(&mut reply)).await??;
+    tokio::time::timeout(timeout, BufReader::new(stream).read_line(&mut reply)).await??;
     if reply.trim() == "unknown command" {
         bail!("the running client does not understand '{command}'");
     }

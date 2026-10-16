@@ -20,6 +20,9 @@ mod net;
 mod packages;
 mod release;
 mod setup;
+mod tones;
+#[cfg(feature = "gui")]
+mod tray;
 mod updater;
 mod worker;
 
@@ -29,12 +32,14 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use tokio::sync::{mpsc, watch};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use verbarelay_protocol::messages::Backend;
 
 use crate::agent::{Agent, AgentExit};
 use crate::config::{ClientConfig, Paths};
 use crate::release::BuildInfo;
+use crate::tones::Tone;
 
 #[derive(Parser)]
 #[command(
@@ -72,7 +77,7 @@ enum Command {
         #[arg(long, env = "VERBARELAY_MASTER_PASSWORD", hide_env_values = true)]
         master_password: Option<String>,
     },
-    /// Show the settings (update interval and development builds).
+    /// Show the settings (updates and tones).
     Settings,
     /// Show the status of the running client.
     Status,
@@ -98,6 +103,13 @@ enum Command {
     /// Prints the compute devices as JSON (internal).
     #[command(hide = true)]
     DetectDevices,
+    /// Tray icon of the running client (internal).
+    #[command(hide = true)]
+    Tray {
+        /// Exit when stdin closes, i.e. when the agent that started the tray stops.
+        #[arg(long)]
+        attached: bool,
+    },
 }
 
 fn main() {
@@ -135,6 +147,13 @@ fn real_main(mut cli: Cli) -> anyhow::Result<()> {
         }
         Some(Command::DetectDevices) => return worker::run_detect(&paths.install_dir),
         _ => {}
+    }
+
+    #[cfg(feature = "gui")]
+    if let Some(Command::Tray { attached }) = cli.command {
+        let _log_guard = logging::init(&paths.logs_dir, "tray");
+        tray::run(paths, attached);
+        return Ok(());
     }
 
     let _log_guard = logging::init(&paths.logs_dir, "client");
@@ -208,6 +227,7 @@ fn real_main(mut cli: Cli) -> anyhow::Result<()> {
             println!("Autostart {state}d.");
             Ok(())
         }
+        Some(Command::Tray { .. }) => bail!("this build has no tray icon"),
         Some(Command::Worker { .. } | Command::DetectDevices) => unreachable!("handled above"),
     }
 }
@@ -231,12 +251,20 @@ fn open_settings(cli: &Cli, paths: &Paths) -> anyhow::Result<()> {
     let _ = cli;
     let config = ClientConfig::load(&paths.config_file).context("the client is not set up yet")?;
     println!("Configuration file: {}", paths.config_file.display());
-    println!("Check for updates every {} hours", config.updates.check_interval_hours);
+    println!(
+        "Check for updates every {} minutes",
+        config.updates.check_interval_minutes
+    );
+    let yes_no = |on: bool| if on { "yes" } else { "no" };
     println!(
         "Install development builds: {}",
-        if config.updates.include_dev_builds { "yes" } else { "no" }
+        yes_no(config.updates.include_dev_builds)
     );
-    println!("Edit [updates] in the file; a running client picks up changes with: verbarelay-client reload");
+    println!("Play tones: {}", yes_no(config.tones.enabled));
+    println!("Play tones for transcription jobs: {}", yes_no(config.tones.jobs));
+    println!(
+        "Edit [updates] and [tones] in the file; a running client picks up changes with: verbarelay-client reload"
+    );
     Ok(())
 }
 
@@ -252,6 +280,8 @@ fn run_background(cli: &Cli, paths: &Paths) -> anyhow::Result<()> {
         return open_settings(cli, paths);
     }
 
+    // After an update the restart tone already announced the new start.
+    let mut greeted = cli.after_update;
     loop {
         let mut config = ClientConfig::load_optional(&paths.config_file)?;
         if config.as_ref().is_none_or(|c| c.credentials.is_none()) {
@@ -266,9 +296,19 @@ fn run_background(cli: &Cli, paths: &Paths) -> anyhow::Result<()> {
         }
 
         info!(version = %info.describe(), server = %config.server_url, backend = %config.backend, "VerbaRelay client starting");
-        match run_agent(paths, config)? {
+        tones::configure(&config.tones);
+        if !std::mem::replace(&mut greeted, true) {
+            tones::play(Tone::Startup);
+        }
+        match run_agent(paths, config, gui_available(cli))? {
             AgentExit::Restart => {
+                tones::play_blocking(Tone::Restart);
                 updater::restart()?;
+                return Ok(());
+            }
+            AgentExit::Shutdown => {
+                info!("stopping");
+                tones::play_blocking(Tone::Shutdown);
                 return Ok(());
             }
             AgentExit::NeedsEnrollment => {
@@ -285,7 +325,7 @@ fn run_background(cli: &Cli, paths: &Paths) -> anyhow::Result<()> {
     }
 }
 
-fn run_agent(paths: &Paths, config: ClientConfig) -> anyhow::Result<AgentExit> {
+fn run_agent(paths: &Paths, config: ClientConfig, tray: bool) -> anyhow::Result<AgentExit> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async {
         let status: ipc::SharedStatus = Arc::new(Mutex::new(ipc::AgentStatus {
@@ -293,7 +333,17 @@ fn run_agent(paths: &Paths, config: ClientConfig) -> anyhow::Result<AgentExit> {
             ..Default::default()
         }));
         let (commands_tx, commands_rx) = mpsc::channel(8);
-        let _endpoint = ipc::serve(paths, status.clone(), commands_tx).await?;
+        let (update_checks_tx, update_checks_rx) = mpsc::channel(4);
+        let quit = CancellationToken::new();
+        let controls = ipc::Controls {
+            commands: commands_tx,
+            update_checks: update_checks_tx,
+            quit: quit.clone(),
+        };
+        let _endpoint = ipc::serve(paths, status.clone(), controls).await?;
+        // The tray exits when this handle (its stdin) is dropped with the agent;
+        // a restarted agent starts its own.
+        let _tray = if tray { start_tray() } else { None };
         let (settings_tx, settings_rx) = watch::channel(config.updates.clone());
         let (staged_tx, staged_rx) = mpsc::channel(1);
         tokio::spawn(updater::run(
@@ -301,8 +351,57 @@ fn run_agent(paths: &Paths, config: ClientConfig) -> anyhow::Result<AgentExit> {
             paths.install_dir.clone(),
             paths.data_dir.clone(),
             staged_tx,
+            update_checks_rx,
         ));
         let agent = Agent::new(paths.clone(), config, status, settings_tx, staged_rx, commands_rx)?;
-        Ok(agent.run().await)
+        tokio::select! {
+            exit = agent.run() => Ok(exit),
+            () = stop_requested() => Ok(AgentExit::Shutdown),
+            () = quit.cancelled() => Ok(AgentExit::Shutdown),
+        }
     })
+}
+
+/// Starts the tray icon process. It is not killed but exits by itself once the
+/// returned stdin closes, so it can remove its icon first.
+fn start_tray() -> Option<std::process::ChildStdin> {
+    let exe = std::env::current_exe().ok()?;
+    std::process::Command::new(exe)
+        .args(["tray", "--attached"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .inspect_err(|e| warn!("starting the tray icon failed: {e}"))
+        .ok()?
+        .stdin
+        .take()
+}
+
+/// Resolves when the user or the system asks the client to stop.
+async fn stop_requested() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let Ok(mut term) = signal(SignalKind::terminate()) else {
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(windows)]
+    {
+        use tokio::signal::windows::{ctrl_close, ctrl_logoff, ctrl_shutdown};
+        let (Ok(mut close), Ok(mut logoff), Ok(mut shutdown)) = (ctrl_close(), ctrl_logoff(), ctrl_shutdown()) else {
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = close.recv() => {}
+            _ = logoff.recv() => {}
+            _ = shutdown.recv() => {}
+        }
+    }
 }

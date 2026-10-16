@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use wxdragon::prelude::*;
 use wxdragon::timer::Timer;
 
-use crate::config::{ClientConfig, Paths};
+use crate::config::{ClientConfig, INTERVAL_PRESETS, MAX_INTERVAL, MIN_INTERVAL, Paths};
 use crate::detect::BackendOption;
 use crate::setup::{self, SetupInput};
 
@@ -32,9 +32,10 @@ pub fn available() -> bool {
     }
 }
 
-fn label(parent: &Panel, sizer: &BoxSizer, text: &str) {
+fn label(parent: &Panel, sizer: &BoxSizer, text: &str) -> StaticText {
     let label = StaticText::builder(parent).with_label(text).build();
     sizer.add(&label, 0, SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+    label
 }
 
 fn add_field<W: WxWidget>(sizer: &BoxSizer, widget: &W) {
@@ -46,7 +47,7 @@ fn add_field<W: WxWidget>(sizer: &BoxSizer, widget: &W) {
     );
 }
 
-fn error_box(parent: &Frame, message: &str) {
+pub fn error_box(parent: &Frame, message: &str) {
     MessageDialog::builder(parent, message, "VerbaRelay")
         .with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
         .build()
@@ -251,86 +252,148 @@ pub fn run_setup(paths: Paths) -> Option<ClientConfig> {
     result.lock().unwrap().take()
 }
 
-/// Runs the settings window: update interval and development builds.
+/// Runs the settings window on its own.
 pub fn run_settings(paths: Paths) {
     let _ = wxdragon::main(move |_| {
-        let config = match ClientConfig::load(&paths.config_file) {
+        settings_window(&paths);
+    });
+}
+
+fn interval_label(minutes: u32) -> String {
+    match minutes {
+        60 => "1 hour".into(),
+        m if m % 60 == 0 => format!("{} hours", m / 60),
+        m => format!("{m} minutes"),
+    }
+}
+
+/// Opens the settings window: update interval, development builds and tones.
+/// Must run inside the wx main loop. Returns the window, or `None` if the
+/// configuration could not be read.
+pub fn settings_window(paths: &Paths) -> Option<Frame> {
+    let config = match ClientConfig::load(&paths.config_file) {
+        Ok(c) => c,
+        Err(e) => {
+            let frame = Frame::builder().with_title("VerbaRelay").build();
+            error_box(&frame, &format!("The configuration could not be read: {e:#}"));
+            frame.close(true);
+            return None;
+        }
+    };
+
+    let frame = Frame::builder()
+        .with_title("VerbaRelay settings")
+        .with_size(Size::new(560, 580))
+        .build();
+    let panel = Panel::builder(&frame).build();
+    let sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+    label(&panel, &sizer, "Status:");
+    let status = TextCtrl::builder(&panel)
+        .with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
+        .with_value(&status_text(paths, &config))
+        .with_size(Size::new(-1, 170))
+        .build();
+    sizer.add(
+        &status,
+        1,
+        SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+        8,
+    );
+
+    label(&panel, &sizer, "Check for updates every:");
+    let mut choices: Vec<String> = INTERVAL_PRESETS.iter().map(|&m| interval_label(m)).collect();
+    choices.push("Custom".into());
+    let interval = Choice::builder(&panel).with_choices(choices).build();
+    add_field(&sizer, &interval);
+    let custom_index = INTERVAL_PRESETS.len() as u32;
+    let minutes = config.updates.check_interval_minutes;
+    let preset = INTERVAL_PRESETS.iter().position(|&m| m == minutes);
+    interval.set_selection(preset.map_or(custom_index, |i| i as u32));
+
+    // Only shown while "Custom" is selected.
+    let custom_label = label(
+        &panel,
+        &sizer,
+        &format!("Custom interval in minutes ({MIN_INTERVAL} to {MAX_INTERVAL}):"),
+    );
+    let custom = SpinCtrl::builder(&panel)
+        .with_range(MIN_INTERVAL as i32, MAX_INTERVAL as i32)
+        .build();
+    custom.set_value(minutes as i32);
+    add_field(&sizer, &custom);
+    let show_custom = move |show: bool| {
+        custom_label.show(show);
+        custom.show(show);
+        panel.layout();
+    };
+    show_custom(preset.is_none());
+    interval.on_selection_changed(move |_| {
+        show_custom(interval.get_selection() == Some(custom_index));
+    });
+
+    let dev = CheckBox::builder(&panel)
+        .with_label("Also install development builds")
+        .build();
+    dev.set_value(config.updates.include_dev_builds);
+    add_field(&sizer, &dev);
+
+    let tones = CheckBox::builder(&panel).with_label("Play tones").build();
+    tones.set_value(config.tones.enabled);
+    add_field(&sizer, &tones);
+
+    let job_tones = CheckBox::builder(&panel)
+        .with_label("Play tones when a transcription job arrives and finishes")
+        .build();
+    job_tones.set_value(config.tones.jobs);
+    job_tones.enable(config.tones.enabled);
+    add_field(&sizer, &job_tones);
+
+    tones.on_toggled(move |_| {
+        job_tones.enable(tones.get_value());
+    });
+
+    let buttons = BoxSizer::builder(Orientation::Horizontal).build();
+    let save = Button::builder(&panel).with_label("Save").build();
+    let close = Button::builder(&panel).with_label("Close").build();
+    buttons.add(&save, 0, SizerFlag::All, 4);
+    buttons.add(&close, 0, SizerFlag::All, 4);
+    sizer.add_sizer(&buttons, 0, SizerFlag::AlignRight | SizerFlag::All, 4);
+
+    panel.set_sizer(sizer, true);
+    close_on_escape(frame);
+    frame.show(true);
+    frame.centre();
+    interval.set_focus();
+
+    let save_paths = paths.clone();
+    save.on_click(move |_| {
+        let mut config = match ClientConfig::load(&save_paths.config_file) {
             Ok(c) => c,
             Err(e) => {
-                let frame = Frame::builder().with_title("VerbaRelay").build();
                 error_box(&frame, &format!("The configuration could not be read: {e:#}"));
-                frame.close(true);
                 return;
             }
         };
-
-        let frame = Frame::builder()
-            .with_title("VerbaRelay settings")
-            .with_size(Size::new(560, 460))
-            .build();
-        let panel = Panel::builder(&frame).build();
-        let sizer = BoxSizer::builder(Orientation::Vertical).build();
-
-        label(&panel, &sizer, "Status:");
-        let status = TextCtrl::builder(&panel)
-            .with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
-            .with_value(&status_text(&paths, &config))
-            .with_size(Size::new(-1, 170))
-            .build();
-        sizer.add(
-            &status,
-            1,
-            SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
-            8,
-        );
-
-        label(&panel, &sizer, "Check for updates every (hours):");
-        let interval = SpinCtrl::builder(&panel).with_range(1, 720).build();
-        interval.set_value(config.updates.check_interval_hours as i32);
-        add_field(&sizer, &interval);
-
-        let dev = CheckBox::builder(&panel)
-            .with_label("Also install development builds")
-            .build();
-        dev.set_value(config.updates.include_dev_builds);
-        add_field(&sizer, &dev);
-
-        let buttons = BoxSizer::builder(Orientation::Horizontal).build();
-        let save = Button::builder(&panel).with_label("Save").build();
-        let close = Button::builder(&panel).with_label("Close").build();
-        buttons.add(&save, 0, SizerFlag::All, 4);
-        buttons.add(&close, 0, SizerFlag::All, 4);
-        sizer.add_sizer(&buttons, 0, SizerFlag::AlignRight | SizerFlag::All, 4);
-
-        panel.set_sizer(sizer, true);
-        close_on_escape(frame);
-        frame.show(true);
-        frame.centre();
-        interval.set_focus();
-
-        let save_paths = paths.clone();
-        save.on_click(move |_| {
-            let mut config = match ClientConfig::load(&save_paths.config_file) {
-                Ok(c) => c,
-                Err(e) => {
-                    error_box(&frame, &format!("The configuration could not be read: {e:#}"));
-                    return;
-                }
-            };
-            config.updates.check_interval_hours = interval.value().clamp(1, 720) as u32;
-            config.updates.include_dev_builds = dev.get_value();
-            if let Err(e) = config.save(&save_paths.config_file) {
-                error_box(&frame, &format!("Saving failed: {e:#}"));
-                return;
-            }
-            // Tell the running client; if none runs, the next start picks it up.
-            let _ = crate::ipc::send_blocking(&save_paths, "reload");
-            frame.close(true);
-        });
-        close.on_click(move |_| {
-            frame.close(true);
-        });
+        config.updates.check_interval_minutes = match interval.get_selection() {
+            Some(i) if i < custom_index => INTERVAL_PRESETS[i as usize],
+            _ => (custom.value().max(0) as u32).clamp(MIN_INTERVAL, MAX_INTERVAL),
+        };
+        config.updates.include_dev_builds = dev.get_value();
+        config.tones.enabled = tones.get_value();
+        config.tones.jobs = job_tones.get_value();
+        if let Err(e) = config.save(&save_paths.config_file) {
+            error_box(&frame, &format!("Saving failed: {e:#}"));
+            return;
+        }
+        // Tell the running client; if none runs, the next start picks it up.
+        let _ = crate::ipc::send_blocking(&save_paths, "reload");
+        frame.close(true);
     });
+    close.on_click(move |_| {
+        frame.close(true);
+    });
+    Some(frame)
 }
 
 /// Human readable status of the running client.
