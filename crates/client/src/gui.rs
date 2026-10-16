@@ -53,6 +53,23 @@ fn error_box(parent: &Frame, message: &str) {
         .show_modal();
 }
 
+/// Makes Escape close the frame, the same as its close button.
+fn close_on_escape(frame: Frame) {
+    const WXK_ESCAPE: i32 = 27;
+    frame.on_char_hook(move |event| {
+        let key = match &event {
+            WindowEventData::Keyboard(key) => key.get_key_code(),
+            WindowEventData::General(general) => general.get_key_code(),
+            _ => None,
+        };
+        if key == Some(WXK_ESCAPE) {
+            frame.close(false);
+        } else {
+            event.skip(true);
+        }
+    });
+}
+
 /// Runs the setup window. Returns the saved configuration, or `None` if cancelled.
 pub fn run_setup(paths: Paths) -> Option<ClientConfig> {
     let result: Arc<Mutex<Option<ClientConfig>>> = Arc::new(Mutex::new(None));
@@ -119,6 +136,7 @@ pub fn run_setup(paths: Paths) -> Option<ClientConfig> {
         sizer.add_sizer(&buttons, 0, SizerFlag::AlignRight | SizerFlag::All, 4);
 
         panel.set_sizer(sizer, true);
+        close_on_escape(frame);
         frame.show(true);
         frame.centre();
         server.set_focus();
@@ -285,6 +303,7 @@ pub fn run_settings(paths: Paths) {
         sizer.add_sizer(&buttons, 0, SizerFlag::AlignRight | SizerFlag::All, 4);
 
         panel.set_sizer(sizer, true);
+        close_on_escape(frame);
         frame.show(true);
         frame.centre();
         interval.set_focus();
