@@ -127,8 +127,9 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             git curl wget ca-certificates build-essential pkg-config python3-pip zip zstd \
-            libgtk-3-dev gnupg
-          # The client needs CMake too: wxdragon builds wxWidgets with it.
+            libgtk-3-dev libssl-dev gnupg
+          # The client build needs CMake and OpenSSL headers too: wxdragon builds
+          # wxWidgets with CMake, and its build script downloads over native-tls.
           pip3 install "cmake>=3.28"
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
