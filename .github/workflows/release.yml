@@ -68,6 +68,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # The engine only changes with engine/ or the toolkit versions. Bump the
       # trailing number when the build commands below change.
       - name: Cached native engine
@@ -131,6 +133,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # The engine only changes with engine/ or the toolkit versions. Bump the
       # trailing number when the build commands below change.
       - name: Cached native engine
@@ -171,6 +175,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build
         run: cargo build --release -p verbarelay-server
       - name: Package
