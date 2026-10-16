@@ -294,8 +294,9 @@ the release workflow does.
 
 ## Releasing
 
-1. Create a minisign key pair without password: `minisign -G -W -s release.key -p release.pub`.
+1. Create a minisign key pair: `minisign -G -s release.key -p release.pub`.
 2. Repository secret `MINISIGN_SECRET_KEY`: contents of `release.key`.
+   Repository secret `MINISIGN_PASSWORD`: its password (omit for a key created with `-W`).
    Repository variable `MINISIGN_PUBLIC_KEY`: the second line of `release.pub`.
 3. Bump `version` in `Cargo.toml`, then tag: `git tag v0.2.0 && git push --tags`.
 
