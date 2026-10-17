@@ -24,7 +24,7 @@ base64.workspace = true
 clap.workspace = true
 directories = "6"
 futures-util.workspace = true
-libloading = "0.8"
+libloading = "0.9"
 minisign-verify = "0.2"
 rand.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-manual-roots-no-provider", "http2"] }
