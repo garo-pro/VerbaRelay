@@ -309,6 +309,8 @@ Every push to `main` publishes a development build. Release assets:
 |---|---|
 | `verbarelay-client-<v>-windows-x86_64.zip` | Client, engine, CPU and Vulkan backends |
 | `verbarelay-client-<v>-linux-x86_64.zip` | Same for Linux |
+| `verbarelay-client-<v>-linux-aarch64.zip` | Same for Linux on ARM (CPU and Vulkan, no CUDA) |
+| `verbarelay-client-<v>-macos-arm64.zip` | Client, engine, Metal and CPU backends for Apple Silicon |
 | `verbarelay-cuda-<v>-<os>-x86_64.zip` | CUDA backend with CUDA runtime and cuBLAS |
 | `verbarelay-server-<v>-linux-x86_64.tar.gz` | Server, example configuration, systemd unit |
 | `*.minisig` | Signatures |
