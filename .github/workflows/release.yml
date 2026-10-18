@@ -175,9 +175,9 @@ jobs:
   client-linux-arm:
     name: Client (Linux ARM)
     needs: meta
-    # GitHub's hosted ARM runner (free for public repositories). No CUDA: the
+    # GitHub's hosted ARM runner (24.04 ships glslc; free for public repos). No CUDA: the
     # package holds the CPU and Vulkan backends only.
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-24.04-arm
     env:
       VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
     steps:
@@ -198,7 +198,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: dist/engine
-          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-vulkan-1
+          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-vulkan-2
       - name: Native engine (CPU variants, Vulkan)
         if: steps.engine-cache.outputs.cache-hit != 'true'
         run: |
