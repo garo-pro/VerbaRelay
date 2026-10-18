@@ -188,6 +188,11 @@ jobs:
             git curl wget ca-certificates build-essential pkg-config python3-pip zip zstd \
             libgtk-3-dev libssl-dev libclang-dev gnupg libvulkan-dev glslc spirv-headers
           pip3 install "cmake>=3.28"
+          # ggml's ARMv9.2 CPU variant needs the SME feature flag, which GCC 13
+          # (the 24.04 default) rejects.
+          sudo -S -p '' apt-get install -y --no-install-recommends gcc-14 g++-14
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -198,7 +203,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: dist/engine
-          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-vulkan-2
+          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-vulkan-gcc14-1
       - name: Native engine (CPU variants, Vulkan)
         if: steps.engine-cache.outputs.cache-hit != 'true'
         run: |
