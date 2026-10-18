@@ -71,6 +71,22 @@ fn close_on_escape(frame: Frame) {
     });
 }
 
+/// Shows the frame in front of all other apps with the keyboard focus on `first`.
+///
+/// On macOS the client is an unbundled executable. wxWidgets activates it once
+/// while starting, before any window exists, and macOS 14+ may ignore that
+/// request (cooperative activation). The window then never becomes key and
+/// keystrokes keep going to Terminal or whichever app was active, so activate
+/// again once the window is visible and only then move the focus.
+fn present<W: WxWidget>(frame: Frame, first: &W) {
+    frame.show(true);
+    frame.centre();
+    frame.raise();
+    #[cfg(target_os = "macos")]
+    wxdragon::app::activate_app();
+    first.set_focus();
+}
+
 /// Runs the setup window. Returns the saved configuration, or `None` if cancelled.
 pub fn run_setup(paths: Paths) -> Option<ClientConfig> {
     let result: Arc<Mutex<Option<ClientConfig>>> = Arc::new(Mutex::new(None));
@@ -138,9 +154,7 @@ pub fn run_setup(paths: Paths) -> Option<ClientConfig> {
 
         panel.set_sizer(sizer, true);
         close_on_escape(frame);
-        frame.show(true);
-        frame.centre();
-        server.set_focus();
+        present(frame, &server);
 
         // Hardware detection with a short speed test runs right away.
         let detect_tx = tx.clone();
@@ -362,9 +376,7 @@ pub fn settings_window(paths: &Paths) -> Option<Frame> {
 
     panel.set_sizer(sizer, true);
     close_on_escape(frame);
-    frame.show(true);
-    frame.centre();
-    interval.set_focus();
+    present(frame, &interval);
 
     let save_paths = paths.clone();
     save.on_click(move |_| {
