@@ -190,6 +190,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(windows, target_os = "linux"))]
     fn nvidia_recommends_cuda() {
         let devices = vec![
             dev("CPU", "cpu", "cpu"),

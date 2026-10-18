@@ -80,6 +80,8 @@ jobs:
           key: engine-${{ runner.os }}-${{ hashFiles('engine/**') }}-cuda12.8.1-vulkan${{ env.VULKAN_VERSION }}-1
       # Packaging copies cuBLAS and the CUDA runtime from the toolkit, so it is
       # installed even when the engine comes from the cache.
+      # The toolkit installer is slow; the action caches the downloaded
+      # installer and the installed tree between runs (use-github-cache).
       - name: CUDA toolkit
         id: cuda
         uses: Jimver/cuda-toolkit@v0.2.36
@@ -87,6 +89,7 @@ jobs:
           cuda: "12.8.1"
           method: network
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust", "visual_studio_integration"]'
+          use-github-cache: true
       - name: Vulkan SDK
         if: steps.engine-cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -169,6 +172,83 @@ jobs:
           name: client-linux
           path: dist/release/*.zip
 
+  client-linux-arm:
+    name: Client (Linux ARM)
+    needs: meta
+    # GitHub's hosted ARM runner (free for public repositories). No CUDA: the
+    # package holds the CPU and Vulkan backends only.
+    runs-on: ubuntu-22.04-arm
+    env:
+      VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
+    steps:
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates build-essential pkg-config python3-pip zip zstd \
+            libgtk-3-dev libssl-dev libclang-dev gnupg libvulkan-dev glslc spirv-headers
+          pip3 install "cmake>=3.28"
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Cached native engine
+        id: engine-cache
+        uses: actions/cache@v6
+        with:
+          path: dist/engine
+          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-vulkan-1
+      - name: Native engine (CPU variants, Vulkan)
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_VULKAN=ON -DVR_CUDA=OFF -DVR_CPU_ALL_VARIANTS=ON
+          cmake --build build/engine --parallel "$(nproc)"
+          cmake --install build/engine --prefix dist/engine
+      - name: Client
+        run: cargo build --release -p verbarelay-client
+      - name: Package
+        run: scripts/package-client.sh "${{ needs.meta.outputs.label }}" target/release/verbarelay-client dist/engine/lib "" dist/release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-linux-arm
+          path: dist/release/*.zip
+
+  client-macos:
+    name: Client (macOS)
+    needs: meta
+    # Apple Silicon: the engine runs on Metal with the Accelerate/BLAS fallback.
+    runs-on: macos-14
+    env:
+      VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Cached native engine
+        id: engine-cache
+        uses: actions/cache@v6
+        with:
+          path: dist/engine
+          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-metal-1
+      - name: Native engine (Metal)
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_CPU_ALL_VARIANTS=OFF -DGGML_METAL=ON
+          cmake --build build/engine --parallel
+          cmake --install build/engine --prefix dist/engine
+      - name: Client
+        run: cargo build --release -p verbarelay-client
+      - name: Package
+        run: scripts/package-client-macos.sh "${{ needs.meta.outputs.label }}" target/release/verbarelay-client dist/engine/lib dist/release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-macos
+          path: dist/release/*.zip
+
   server-linux:
     name: Server (Linux)
     needs: meta
@@ -194,7 +274,7 @@ jobs:
 
   publish:
     name: Sign and publish
-    needs: [meta, client-windows, client-linux, server-linux]
+    needs: [meta, client-windows, client-linux, client-linux-arm, client-macos, server-linux]
     # Skipped until the signing key is configured (see the header of this file).
     if: vars.MINISIGN_PUBLIC_KEY != ''
     runs-on: ubuntu-latest

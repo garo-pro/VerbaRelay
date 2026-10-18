@@ -72,6 +72,10 @@ impl BuildInfo {
 pub fn target_label() -> &'static str {
     if cfg!(windows) {
         "windows-x86_64"
+    } else if cfg!(target_os = "macos") {
+        "macos-arm64"
+    } else if cfg!(target_arch = "aarch64") {
+        "linux-aarch64"
     } else {
         "linux-x86_64"
     }

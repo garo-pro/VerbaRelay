@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Packages the Linux client into two archives:
-#   verbarelay-client-<label>-linux-x86_64.zip  executable + engine + CPU/Vulkan backends
-#   verbarelay-cuda-<label>-linux-x86_64.zip    CUDA backend + CUDA runtime + cuBLAS
+#   verbarelay-client-<label>-linux-<arch>.zip   executable + engine + CPU/Vulkan backends
+#   verbarelay-cuda-<label>-linux-<arch>.zip     CUDA backend + CUDA runtime + cuBLAS
 #
 # Usage: scripts/package-client.sh <label> <client binary> <engine install dir> <cuda lib dir> <out dir>
 set -euo pipefail
 
 label="$1"
+arch="$(uname -m)"   # x86_64 or aarch64
 binary="$2"
 engine="$3"
 cuda_lib="$4"
@@ -46,8 +47,8 @@ cp LICENSE THIRD-PARTY-NOTICES.md "$core/"
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
-(cd "$core" && zip -q -r -X "$out/verbarelay-client-$label-linux-x86_64.zip" .)
+(cd "$core" && zip -q -r -X "$out/verbarelay-client-$label-linux-$arch.zip" .)
 if [ -n "$(ls -A "$cuda")" ]; then
-    (cd "$cuda" && zip -q -r -X "$out/verbarelay-cuda-$label-linux-x86_64.zip" .)
+    (cd "$cuda" && zip -q -r -X "$out/verbarelay-cuda-$label-linux-$arch.zip" .)
 fi
 ls -l "$out"
