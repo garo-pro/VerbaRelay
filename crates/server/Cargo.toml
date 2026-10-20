@@ -17,7 +17,7 @@ anyhow.workspace = true
 argon2 = "0.5"
 base64.workspace = true
 axum = { version = "0.8", features = ["ws", "multipart"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap.workspace = true
 futures-util.workspace = true
