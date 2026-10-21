@@ -177,7 +177,7 @@ All calls need `Authorization: Bearer <api token>`.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `file` | required | Audio in any common format (WAV, FLAC, MP3, M4A/AAC, Ogg Vorbis, ...) |
+| `file` | required | Audio in any common format (WAV, FLAC, MP3, M4A/AAC, Ogg Vorbis, Ogg/WebM Opus, ...) |
 | `language` | `auto` | Language code such as `de` or `en` |
 | `translate` | `false` | Translate into English |
 | `model` | server default | Another allowed model; see the model policy below |

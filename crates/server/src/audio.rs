@@ -1,20 +1,31 @@
 //! Audio decoding, resampling and splitting.
 //!
-//! Uploads in any common format (WAV, FLAC, MP3, AAC/M4A, Ogg Vorbis, ...) are
-//! decoded with Symphonia, mixed to mono and resampled to 16 kHz, the format
-//! Whisper expects. Decoding happens in memory only; audio never touches disk.
+//! Uploads in any common format (WAV, FLAC, MP3, AAC/M4A, Ogg Vorbis, Ogg/WebM
+//! Opus, ...) are decoded with Symphonia (Opus through a bundled libopus), mixed
+//! to mono and resampled to 16 kHz, the format Whisper expects. Decoding
+//! happens in memory only; audio never touches disk.
 
 use std::io::Cursor;
+use std::sync::LazyLock;
 
 use anyhow::{Context, bail};
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
+use symphonia::core::codecs::{CODEC_TYPE_NULL, CodecRegistry, DecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use symphonia_adapter_libopus::OpusDecoder;
 use verbarelay_protocol::SAMPLE_RATE;
+
+/// Symphonia's default codecs plus Opus, which Symphonia cannot decode itself.
+static CODECS: LazyLock<CodecRegistry> = LazyLock::new(|| {
+    let mut registry = CodecRegistry::new();
+    symphonia::default::register_enabled_codecs(&mut registry);
+    registry.register_all::<OpusDecoder>();
+    registry
+});
 
 /// Decoded audio: 16 kHz mono 16-bit PCM.
 #[derive(Debug, Clone)]
@@ -46,7 +57,7 @@ pub fn decode(data: Vec<u8>, file_name: Option<&str>) -> anyhow::Result<Pcm> {
         .context("the file contains no audio track")?;
     let track_id = track.id;
     let source_rate = track.codec_params.sample_rate.context("unknown sample rate")?;
-    let mut decoder = symphonia::default::get_codecs()
+    let mut decoder = CODECS
         .make(&track.codec_params, &DecoderOptions::default())
         .context("unsupported audio codec")?;
 
@@ -237,6 +248,17 @@ mod tests {
         assert!((990..=1000).contains(&pcm.duration_ms()));
         let peak = pcm.samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
         assert!(peak > 8_000, "tone should survive resampling, peak {peak}");
+    }
+
+    #[test]
+    fn decodes_ogg_opus() {
+        // One second of a 440 Hz tone at 48 kHz mono, like a WhatsApp or Telegram voice note.
+        let data = include_bytes!("../tests/fixtures/tone.ogg").to_vec();
+        let pcm = decode(data, Some("voice.ogg")).unwrap();
+        assert!((950..=1050).contains(&pcm.duration_ms()), "{}", pcm.duration_ms());
+        let peak = pcm.samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
+        // ffmpeg generated the tone at 1/8 of full scale.
+        assert!(peak > 3_000, "tone should survive decoding, peak {peak}");
     }
 
     #[test]

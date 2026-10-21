@@ -8,6 +8,16 @@ archives contain the following third-party components.
 Copyright (c) 2023-2026 The ggml authors. MIT license.
 https://github.com/ggml-org/whisper.cpp
 
+## libopus (statically linked into the server)
+
+Copyright (c) 2001-2023 Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin,
+Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro
+Lopo, Mozilla, Amazon. BSD 3-clause license.
+https://opus-codec.org/license/
+
+symphonia-adapter-libopus: MIT or Apache-2.0. opusic-sys: BSD 3-clause.
+https://github.com/aschey/symphonia-adapters
+
 ## wxWidgets (statically linked into the client through wxDragon)
 
 wxWindows Library Licence, Version 3.1 (LGPL with an exception that permits
