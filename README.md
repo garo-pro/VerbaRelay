@@ -1,15 +1,8 @@
 # VerbaRelay
 
-VerbaRelay turns the computers you already own into one transcription
-service. A small **server** accepts audio over an authenticated HTTP API and
-hands every job to the fastest free **peer**: a background client running on a
-desktop, laptop or home server, transcribing with
-[Whisper](https://github.com/openai/whisper) through
-[whisper.cpp](https://github.com/ggml-org/whisper.cpp) on an NVIDIA GPU (CUDA),
-any other GPU (Vulkan) or the CPU.
+VerbaRelay turns the computers you already own into one transcription service. A small **server** accepts audio over an authenticated HTTP API and hands every job to the fastest free **peer**: a background client running on a desktop, laptop or home server, transcribing with [Whisper](https://github.com/openai/whisper) through [whisper.cpp](https://github.com/ggml-org/whisper.cpp) on an NVIDIA GPU (CUDA), any other GPU (Vulkan) or the CPU.
 
-Audio is encrypted for exactly one peer, never written to disk on either side,
-and only that peer can decrypt it.
+Audio is encrypted for exactly one peer, never written to disk on either side, and only that peer can decrypt it.
 
 * [How it works](#how-it-works)
 * [Security](#security)
@@ -25,33 +18,13 @@ and only that peer can decrypt it.
 
 ## How it works
 
-1. **Enrollment.** On its first start a client asks for the server address, the
-   server's master password and the compute backend. It creates an X25519 key
-   pair, sends the public key and receives a personal token. The master
-   password is used only for this step; every device has its own token.
-2. **Scoring.** The client tells the server which hardware it has (for example
-   "NVIDIA GeForce RTX 4070 via CUDA" or "AMD Ryzen 7 9700X via CPU") and
-   transcribes a bundled speech sample with the server's model. The measured
-   speed, in multiples of real time, becomes its **transcription score**. The
-   score is refined with every real job (moving average).
-3. **Dispatching.** For each request the server picks the free peer with the
-   highest score, asks it whether it is available ("offer"), and only after the
-   peer accepts streams the encrypted audio to it. A peer works on one job at a
-   time; while it is busy, the next best peer is asked.
-4. **Results.** The peer sends each finished segment back immediately (live
-   streaming to the caller is optional) and the full result at the end. If a
-   peer declines, times out or disconnects, the job moves to the next peer.
-5. **Long recordings** (10 minutes or more by default) are cut at pauses and
-   transcribed in parallel on several idle peers, then put back together with
-   correct timestamps.
+1. **Enrollment.** On its first start a client asks for the server address, the server's master password and the compute backend. It creates an X25519 key pair, sends the public key and receives a personal token. The master password is used only for this step; every device has its own token.
+2. **Scoring.** The client tells the server which hardware it has (for example "NVIDIA GeForce RTX 4070 via CUDA" or "AMD Ryzen 7 9700X via CPU") and transcribes a bundled speech sample with the server's model. The measured speed, in multiples of real time, becomes its **transcription score**. The score is refined with every real job (moving average).
+3. **Dispatching.** For each request the server picks the free peer with the highest score, asks it whether it is available ("offer"), and only after the peer accepts streams the encrypted audio to it. A peer works on one job at a time; while it is busy, the next best peer is asked.
+4. **Results.** The peer sends each finished segment back immediately (live streaming to the caller is optional) and the full result at the end. If a peer declines, times out or disconnects, the job moves to the next peer.
+5. **Long recordings** (10 minutes or more by default) are cut at pauses and transcribed in parallel on several idle peers, then put back together with correct timestamps.
 
-One client executable supports CUDA, Vulkan and the CPU. The compute backends
-are separate native modules that are loaded at runtime; missing modules are
-skipped instead of crashing the client. The CUDA runtime is several hundred MB,
-so it is a separate download that the setup offers only on NVIDIA systems. All
-native code runs in a separate worker process, so even a crashing GPU driver
-cannot take the client down; after repeated GPU failures the client falls back
-to the CPU on its own.
+One client executable supports CUDA, Vulkan and the CPU. The compute backends are separate native modules that are loaded at runtime; missing modules are skipped instead of crashing the client. The CUDA runtime is several hundred MB, so it is a separate download that the setup offers only on NVIDIA systems. All native code runs in a separate worker process, so even a crashing GPU driver cannot take the client down; after repeated GPU failures the client falls back to the CPU on its own.
 
 ## Security
 
@@ -67,8 +40,7 @@ to the CPU on its own.
 | Updates | Every update and the CUDA package is verified with a minisign signature before use. |
 | Logs | Tokens are redacted; audio and transcript text are never logged. |
 
-Note: the server necessarily sees the audio it receives from API callers. It
-keeps it in memory only as long as a job runs.
+Note: the server necessarily sees the audio it receives from API callers. It keeps it in memory only as long as a job runs.
 
 ## Server setup
 
@@ -94,17 +66,11 @@ sudo systemctl enable --now verbarelay-server
 sudo -u verbarelay verbarelay-server --config /etc/verbarelay/server.toml tokens create my-app
 ```
 
-TLS: either point `[tls]` at a certificate (for example from Let's Encrypt) or
-remove the section and run the server behind a reverse proxy that terminates
-TLS (Caddy, nginx). Behind a proxy, set `trust_forwarded_for = true` so rate
-limits see real client addresses, and make sure the proxy forwards WebSocket
-upgrades for `/api/v1/peers/connect`.
+TLS: either point `[tls]` at a certificate (for example from Let's Encrypt) or remove the section and run the server behind a reverse proxy that terminates TLS (Caddy, nginx). Behind a proxy, set `trust_forwarded_for = true` so rate limits see real client addresses, and make sure the proxy forwards WebSocket upgrades for `/api/v1/peers/connect`.
 
 ### Docker
 
-The repository contains a `Dockerfile` for the server and an example
-`compose.yaml`. The configuration directory is mounted read-only at
-`/etc/verbarelay`, the database lives in a volume at `/var/lib/verbarelay`.
+The repository contains a `Dockerfile` for the server and an example `compose.yaml`. The configuration directory is mounted read-only at `/etc/verbarelay`, the database lives in a volume at `/var/lib/verbarelay`.
 
 ```sh
 cp config/server.example.toml config/server.toml
@@ -113,33 +79,21 @@ docker compose up -d
 docker compose exec server verbarelay-server tokens create my-app
 ```
 
-The container runs as uid 10001, so the files in `./config` must be readable
-by it. Logs go to stdout (`docker compose logs`) and to `/var/lib/verbarelay/logs`.
+The container runs as uid 10001, so the files in `./config` must be readable by it. Logs go to stdout (`docker compose logs`) and to `/var/lib/verbarelay/logs`.
 
 ## Client setup
 
 ### Windows
 
-1. Extract `verbarelay-client-<version>-windows-x86_64.zip` into a folder you
-   can write to, for example `%LOCALAPPDATA%\Programs\verbarelay`.
-2. Start `verbarelay-client.exe`. The setup window asks for the server
-   address, the master password and the device name, detects the graphics
-   hardware, measures CPU and GPU speed with a small test model, and
-   preselects the recommended backend. Choosing CUDA downloads the CUDA
-   package.
-3. From then on the client runs in the background and starts with Windows.
-   Its tray icon shows whether it is connected or transcribing; its menu opens
-   the settings, checks for updates right away and exits the client. Starting
-   the executable again also opens the settings window.
+1. Extract `verbarelay-client-<version>-windows-x86_64.zip` into a folder you can write to, for example `%LOCALAPPDATA%\Programs\verbarelay`.
+2. Start `verbarelay-client.exe`. The setup window asks for the server address, the master password and the device name, detects the graphics hardware, measures CPU and GPU speed with a small test model, and preselects the recommended backend. Choosing CUDA downloads the CUDA package.
+3. From then on the client runs in the background and starts with Windows. Its tray icon shows whether it is connected or transcribing; its menu opens the settings, checks for updates right away and exits the client. Starting the executable again also opens the settings window.
 
-The windows use native controls with labelled fields and are fully usable with
-screen readers such as NVDA.
+The windows use native controls with labelled fields and are fully usable with screen readers such as NVDA.
 
 ### Linux desktop
 
-Same as Windows: extract the archive (for example to
-`~/.local/share/verbarelay-client`) and run `verbarelay-client`. The
-client registers itself in `~/.config/autostart`.
+Same as Windows: extract the archive (for example to `~/.local/share/verbarelay-client`) and run `verbarelay-client`. The client registers itself in `~/.config/autostart`.
 
 ### Linux without a desktop
 
@@ -207,20 +161,11 @@ JSON response:
 }
 ```
 
-With `stream=true` the response is an event stream: `queued`, `notice`,
-`assigned` (which peer took which part), `segment` (live text with
-timestamps), and finally `done` (the JSON above) or `error`. Segments of split
-recordings can arrive out of order across parts; `done` is always in order.
+With `stream=true` the response is an event stream: `queued`, `notice`, `assigned` (which peer took which part), `segment` (live text with timestamps), and finally `done` (the JSON above) or `error`. Segments of split recordings can arrive out of order across parts; `done` is always in order.
 
-**Model policy.** `[models] enforce = true` makes every peer use the server's
-model. With `allow_request_override = true` a request may pick another model
-from `allowed`; peers download it on first use. With
-`allow_request_override = false` the requested model is ignored and the
-response says so in `notices` (JSON and stream) or in the
-`X-VerbaRelay-Notice` header (text, SRT, VTT).
+**Model policy.** `[models] enforce = true` makes every peer use the server's model. With `allow_request_override = true` a request may pick another model from `allowed`; peers download it on first use. With `allow_request_override = false` the requested model is ignored and the response says so in `notices` (JSON and stream) or in the `X-VerbaRelay-Notice` header (text, SRT, VTT).
 
-Errors are JSON (`{"error": "..."}`) with status 400 (bad input), 401 (token),
-429 (rate limit; see `Retry-After`) or 502 (no peer could finish the job).
+Errors are JSON (`{"error": "..."}`) with status 400 (bad input), 401 (token), 429 (rate limit; see `Retry-After`) or 502 (no peer could finish the job).
 
 ### `GET /api/v1/status`
 
@@ -233,10 +178,7 @@ Unauthenticated liveness probe.
 ## Configuration reference
 
 * Server: [`config/server.example.toml`](config/server.example.toml), every option commented.
-* Client: [`config/client.example.toml`](config/client.example.toml). The only
-  user settings are the update interval, whether to install development
-  builds, and the notification tones (on or off, and separately for
-  transcription jobs); everything else is written by the setup.
+* Client: [`config/client.example.toml`](config/client.example.toml). The only user settings are the update interval, whether to install development builds, and the notification tones (on or off, and separately for transcription jobs); everything else is written by the setup.
 
 ## Statistics and logs
 
@@ -247,31 +189,17 @@ verbarelay-server peers revoke <id>
 verbarelay-server tokens list
 ```
 
-Statistics include jobs, failures, rejected model overrides, transcribed audio
-minutes and words (total, per job, per audio minute), waiting time for a free
-peer, offer response times, transfer times, processing times, time to the first
-segment, speed relative to real time, and per peer: device, score, online time
-in percent, finished and failed parts.
+Statistics include jobs, failures, rejected model overrides, transcribed audio minutes and words (total, per job, per audio minute), waiting time for a free peer, offer response times, transfer times, processing times, time to the first segment, speed relative to real time, and per peer: device, score, online time in percent, finished and failed parts.
 
-Logs are rotated daily: the server writes to `<data_dir>/logs` (or
-`[logging] dir`) and to stdout, in text or JSON. Clients log to
-`%LOCALAPPDATA%\verbarelay\data\logs` on Windows and
-`~/.local/share/verbarelay/logs` on Linux.
+Logs are rotated daily: the server writes to `<data_dir>/logs` (or `[logging] dir`) and to stdout, in text or JSON. Clients log to `%LOCALAPPDATA%\verbarelay\data\logs` on Windows and `~/.local/share/verbarelay/logs` on Linux.
 
 ## Updates
 
-The client updates itself without any user interaction: it checks GitHub
-releases on the configured interval, downloads in the background without a
-progress bar, verifies the minisign signature, waits until no job is running,
-swaps the files and restarts. Stable builds follow version tags; with
-"development builds" enabled the client follows the rolling `dev` release
-instead. If the CUDA package is installed, it is updated together with the
-client.
+The client updates itself without any user interaction: it checks GitHub releases on the configured interval, downloads in the background without a progress bar, verifies the minisign signature, waits until no job is running, swaps the files and restarts. Stable builds follow version tags; with "development builds" enabled the client follows the rolling `dev` release instead. If the CUDA package is installed, it is updated together with the client.
 
 ## Building from source
 
-Requirements: Rust (stable), CMake 3.28+, a C/C++ compiler. Optional: Vulkan
-SDK, CUDA Toolkit 12. On Linux the GUI needs `libgtk-3-dev`.
+Requirements: Rust (stable), CMake 3.28+, a C/C++ compiler. Optional: Vulkan SDK, CUDA Toolkit 12. On Linux the GUI needs `libgtk-3-dev`.
 
 ```sh
 # Native engine (whisper.cpp with runtime-loadable backends)
@@ -291,16 +219,12 @@ copy dist\engine\bin\*.dll target\release\  # Windows
 
 Tests: `cargo test --workspace --no-default-features`.
 
-Local builds have automatic updates disabled; they are enabled by setting
-`VERBARELAY_UPDATE_REPO` and `VERBARELAY_UPDATE_PUBKEY` at build time, as
-the release workflow does.
+Local builds have automatic updates disabled; they are enabled by setting `VERBARELAY_UPDATE_REPO` and `VERBARELAY_UPDATE_PUBKEY` at build time, as the release workflow does.
 
 ## Releasing
 
 1. Create a minisign key pair: `minisign -G -s release.key -p release.pub`.
-2. Repository secret `MINISIGN_SECRET_KEY`: contents of `release.key`.
-   Repository secret `MINISIGN_PASSWORD`: its password (omit for a key created with `-W`).
-   Repository variable `MINISIGN_PUBLIC_KEY`: the second line of `release.pub`.
+2. Repository secret `MINISIGN_SECRET_KEY`: contents of `release.key`. Repository secret `MINISIGN_PASSWORD`: its password (omit for a key created with `-W`). Repository variable `MINISIGN_PUBLIC_KEY`: the second line of `release.pub`.
 3. Bump `version` in `Cargo.toml`, then tag: `git tag v0.2.0 && git push --tags`.
 
 Every push to `main` publishes a development build. Release assets:
