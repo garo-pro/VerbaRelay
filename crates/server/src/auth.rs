@@ -4,11 +4,9 @@
 //! master password is either compared in constant time (plain configuration) or
 //! verified against an Argon2 hash.
 
-use argon2::Argon2;
-use argon2::password_hash::rand_core::OsRng as ArgonRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use base64::Engine;
-use rand::RngCore;
+use rand::TryRngCore;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -17,7 +15,9 @@ use crate::config::EnrollmentSection;
 /// Creates a new random token with the given prefix.
 pub fn generate_token(prefix: &str) -> String {
     let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("the operating system random number generator failed");
     format!(
         "{prefix}{}",
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
@@ -49,9 +49,8 @@ pub fn bearer(header: Option<&str>) -> Option<&str> {
 
 /// Creates an Argon2id hash for the configuration file.
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
-    let salt = SaltString::generate(&mut ArgonRng);
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map(|h| h.to_string())
         .map_err(|e| anyhow::anyhow!("hashing failed: {e}"))
 }

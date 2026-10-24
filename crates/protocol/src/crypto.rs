@@ -19,7 +19,6 @@
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use hkdf::Hkdf;
-use rand::rngs::OsRng;
 use sha2::Sha256;
 use uuid::Uuid;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
@@ -51,7 +50,7 @@ impl PeerKeypair {
     /// Creates a fresh random key pair.
     pub fn generate() -> Self {
         Self {
-            secret: StaticSecret::random_from_rng(OsRng),
+            secret: StaticSecret::random(),
         }
     }
 
@@ -86,7 +85,7 @@ impl PeerKeypair {
 ///
 /// Returns the ephemeral public key that has to be sent to the peer.
 pub fn create_session(peer_public: [u8; 32], job_id: Uuid) -> Result<([u8; 32], SessionKeys), CryptoError> {
-    let ephemeral = EphemeralSecret::random_from_rng(OsRng);
+    let ephemeral = EphemeralSecret::random();
     let ephemeral_public = PublicKey::from(&ephemeral).to_bytes();
     let shared = ephemeral.diffie_hellman(&PublicKey::from(peer_public));
     if !shared.was_contributory() {
@@ -151,12 +150,12 @@ fn aad_for(job_id: Uuid, seq: u32, last: bool) -> [u8; 21] {
 }
 
 fn seal(key: &[u8; 32], job_id: Uuid, seq: u32, last: bool, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
     let nonce = nonce_for(seq);
     let aad = aad_for(job_id, seq, last);
     cipher
         .encrypt(
-            Nonce::from_slice(&nonce),
+            &Nonce::from(nonce),
             Payload {
                 msg: plaintext,
                 aad: &aad,
@@ -166,12 +165,12 @@ fn seal(key: &[u8; 32], job_id: Uuid, seq: u32, last: bool, plaintext: &[u8]) ->
 }
 
 fn open(key: &[u8; 32], job_id: Uuid, seq: u32, last: bool, ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let cipher = ChaCha20Poly1305::new(&Key::from(*key));
     let nonce = nonce_for(seq);
     let aad = aad_for(job_id, seq, last);
     cipher
         .decrypt(
-            Nonce::from_slice(&nonce),
+            &Nonce::from(nonce),
             Payload {
                 msg: ciphertext,
                 aad: &aad,

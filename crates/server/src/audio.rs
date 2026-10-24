@@ -9,13 +9,13 @@ use std::io::Cursor;
 use std::sync::LazyLock;
 
 use anyhow::{Context, bail};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, CodecRegistry, DecoderOptions};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::registry::CodecRegistry;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use symphonia_adapter_libopus::OpusDecoder;
 use verbarelay_protocol::SAMPLE_RATE;
 
@@ -23,7 +23,7 @@ use verbarelay_protocol::SAMPLE_RATE;
 static CODECS: LazyLock<CodecRegistry> = LazyLock::new(|| {
     let mut registry = CodecRegistry::new();
     symphonia::default::register_enabled_codecs(&mut registry);
-    registry.register_all::<OpusDecoder>();
+    registry.register_audio_decoder::<OpusDecoder>();
     registry
 });
 
@@ -46,31 +46,34 @@ pub fn decode(data: Vec<u8>, file_name: Option<&str>) -> anyhow::Result<Pcm> {
         hint.with_extension(ext);
     }
     let source = MediaSourceStream::new(Box::new(Cursor::new(data)), Default::default());
-    let probed = symphonia::default::get_probe()
-        .format(&hint, source, &FormatOptions::default(), &MetadataOptions::default())
+    let mut format = symphonia::default::get_probe()
+        .probe(&hint, source, FormatOptions::default(), MetadataOptions::default())
         .context("unsupported or corrupt audio file")?;
-    let mut format = probed.format;
     let track = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+        .default_track(TrackType::Audio)
         .context("the file contains no audio track")?;
     let track_id = track.id;
-    let source_rate = track.codec_params.sample_rate.context("unknown sample rate")?;
+    let params = track
+        .codec_params
+        .as_ref()
+        .and_then(|p| p.audio())
+        .context("the file contains no audio track")?;
+    let source_rate = params.sample_rate.context("unknown sample rate")?;
     let mut decoder = CODECS
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(params, &AudioDecoderOptions::default())
         .context("unsupported audio codec")?;
 
     let mut mono: Vec<f32> = Vec::new();
-    let mut buffer: Option<SampleBuffer<f32>> = None;
+    let mut interleaved: Vec<f32> = Vec::new();
     loop {
         let packet = match format.next_packet() {
-            Ok(p) => p,
+            Ok(Some(p)) => p,
+            Ok(None) => break,
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(SymphoniaError::ResetRequired) => break,
             Err(e) => return Err(e).context("reading audio packets"),
         };
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
         let decoded = match decoder.decode(&packet) {
@@ -79,14 +82,9 @@ pub fn decode(data: Vec<u8>, file_name: Option<&str>) -> anyhow::Result<Pcm> {
             Err(SymphoniaError::DecodeError(_)) => continue,
             Err(e) => return Err(e).context("decoding audio"),
         };
-        let spec = *decoded.spec();
-        let channels = spec.channels.count().max(1);
-        let buf = buffer.get_or_insert_with(|| SampleBuffer::new(decoded.capacity() as u64, spec));
-        if buf.capacity() < decoded.capacity() * channels {
-            *buf = SampleBuffer::new(decoded.capacity() as u64, spec);
-        }
-        buf.copy_interleaved_ref(decoded);
-        for frame in buf.samples().chunks_exact(channels) {
+        let channels = decoded.spec().channels().count().max(1);
+        decoded.copy_to_vec_interleaved(&mut interleaved);
+        for frame in interleaved.chunks_exact(channels) {
             mono.push(frame.iter().sum::<f32>() / channels as f32);
         }
     }

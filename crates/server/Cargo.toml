@@ -14,7 +14,7 @@ path = "src/main.rs"
 verbarelay-protocol.workspace = true
 
 anyhow.workspace = true
-argon2 = "0.5"
+argon2 = "0.6"
 base64.workspace = true
 axum = { version = "0.8", features = ["ws", "multipart"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
@@ -28,8 +28,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 subtle.workspace = true
-symphonia = { version = "0.5", features = ["all"] }
-symphonia-adapter-libopus = "0.2"
+symphonia = { version = "0.6", features = ["all"] }
+symphonia-adapter-libopus = "0.3"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1"

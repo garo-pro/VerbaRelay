@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
-use rand::RngCore;
+use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -73,7 +73,7 @@ pub async fn serve(paths: &Paths, status: SharedStatus, controls: Controls) -> a
     let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
     let port = listener.local_addr()?.port();
     let mut secret_bytes = [0u8; 24];
-    rand::rngs::OsRng.fill_bytes(&mut secret_bytes);
+    rand::rngs::OsRng.try_fill_bytes(&mut secret_bytes)?;
     let secret: String = secret_bytes.iter().map(|b| format!("{b:02x}")).collect();
     let file = endpoint_file(paths);
     let endpoint = Endpoint {
