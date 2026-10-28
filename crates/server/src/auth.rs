@@ -6,7 +6,7 @@
 
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use base64::Engine;
-use rand::TryRngCore;
+use rand::TryRng;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -15,7 +15,7 @@ use crate::config::EnrollmentSection;
 /// Creates a new random token with the given prefix.
 pub fn generate_token(prefix: &str) -> String {
     let mut bytes = [0u8; 32];
-    rand::rngs::OsRng
+    rand::rngs::SysRng
         .try_fill_bytes(&mut bytes)
         .expect("the operating system random number generator failed");
     format!(
