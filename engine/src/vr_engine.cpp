@@ -213,6 +213,7 @@ vr_context * vr_engine_init(const char * model_path, const char * backend, int f
     } else {
         const char * reg_name = equals_ignore_case(backend, "cuda")   ? "CUDA"
                                 : equals_ignore_case(backend, "vulkan") ? "Vulkan"
+                                : equals_ignore_case(backend, "metal")  ? "MTL"
                                                                         : nullptr;
         if (reg_name == nullptr) {
             write_error(err, err_len, std::string("unknown backend: ") + backend);

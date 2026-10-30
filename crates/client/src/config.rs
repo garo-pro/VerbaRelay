@@ -23,7 +23,7 @@ pub struct ClientConfig {
     pub server_url: String,
     /// Name shown on the server.
     pub device_name: String,
-    /// Compute backend: "cuda", "vulkan" or "cpu".
+    /// Compute backend: "cuda", "vulkan", "metal" or "cpu".
     pub backend: Backend,
     /// Model used when the server does not dictate one.
     #[serde(default = "default_model")]

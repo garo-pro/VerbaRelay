@@ -70,7 +70,7 @@ enum Command {
         /// Device name (defaults to the host name).
         #[arg(long)]
         name: Option<String>,
-        /// Compute backend for unattended setup: cuda, vulkan or cpu.
+        /// Compute backend for unattended setup: cuda, vulkan, metal or cpu.
         #[arg(long, requires = "server")]
         backend: Option<Backend>,
         /// Master password for unattended setup (better: VERBARELAY_MASTER_PASSWORD).

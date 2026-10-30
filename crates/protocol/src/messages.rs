@@ -20,16 +20,18 @@ pub enum Backend {
     Cpu,
     Vulkan,
     Cuda,
+    Metal,
 }
 
 impl Backend {
-    pub const ALL: [Backend; 3] = [Backend::Cuda, Backend::Vulkan, Backend::Cpu];
+    pub const ALL: [Backend; 4] = [Backend::Cuda, Backend::Metal, Backend::Vulkan, Backend::Cpu];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Backend::Cpu => "cpu",
             Backend::Vulkan => "vulkan",
             Backend::Cuda => "cuda",
+            Backend::Metal => "metal",
         }
     }
 
@@ -38,6 +40,7 @@ impl Backend {
             Backend::Cpu => "CPU",
             Backend::Vulkan => "Vulkan (GPU)",
             Backend::Cuda => "CUDA (NVIDIA GPU)",
+            Backend::Metal => "Metal (Apple GPU)",
         }
     }
 }
@@ -56,6 +59,7 @@ impl std::str::FromStr for Backend {
             "cpu" => Ok(Backend::Cpu),
             "vulkan" => Ok(Backend::Vulkan),
             "cuda" => Ok(Backend::Cuda),
+            "metal" => Ok(Backend::Metal),
             other => Err(format!("unknown backend: {other}")),
         }
     }
@@ -258,7 +262,7 @@ mod tests {
     #[test]
     fn backend_parsing() {
         assert_eq!("CUDA".parse::<Backend>().unwrap(), Backend::Cuda);
-        assert!("metal".parse::<Backend>().is_err());
+        assert_eq!("metal".parse::<Backend>().unwrap(), Backend::Metal);
     }
 
     #[test]

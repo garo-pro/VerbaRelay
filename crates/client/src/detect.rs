@@ -1,7 +1,7 @@
 //! Hardware detection and the backend recommendation shown during setup.
 //!
 //! Detection runs in a child process. The recommendation works in two steps:
-//! 1. by device type: an NVIDIA GPU suggests CUDA, another dedicated GPU Vulkan,
+//! 1. by device type: an NVIDIA GPU suggests CUDA, an Apple GPU Metal, another dedicated GPU Vulkan,
 //!    and an integrated GPU alone the CPU;
 //! 2. by measurement: every backend that is usable without a download is
 //!    benchmarked with the tiny model, and the fastest wins. This catches cases
@@ -44,6 +44,7 @@ pub fn device_info(devices: &[EngineDevice], backend: Backend) -> DeviceInfo {
         Backend::Cpu => cpu_name.clone(),
         Backend::Cuda => best_gpu(devices, "CUDA").map_or_else(|| "NVIDIA GPU".into(), |d| d.description.clone()),
         Backend::Vulkan => best_gpu(devices, "Vulkan").map_or_else(|| "Vulkan GPU".into(), |d| d.description.clone()),
+        Backend::Metal => best_gpu(devices, "MTL").map_or_else(|| "Apple GPU".into(), |d| d.description.clone()),
     };
     DeviceInfo {
         hostname,
@@ -128,6 +129,15 @@ pub fn backend_options(
             recommended: false,
         });
     }
+    if let Some(gpu) = best_gpu(devices, "MTL") {
+        options.push(BackendOption {
+            backend: Backend::Metal,
+            device: gpu.description.clone(),
+            needs_download: false,
+            measured_speed: speed_of(Backend::Metal),
+            recommended: false,
+        });
+    }
     if let Some(gpu) = best_gpu(devices, "Vulkan") {
         let kind = if gpu.kind == "igpu" { " (integrated)" } else { "" };
         options.push(BackendOption {
@@ -165,6 +175,10 @@ fn recommend(devices: &[EngineDevice], options: &[BackendOption]) -> Backend {
         .max_by(|a, b| a.1.total_cmp(&b.1))
     {
         return best.0;
+    }
+    // Apple Silicon: Metal is the fast path even before it is measured.
+    if options.iter().any(|o| o.backend == Backend::Metal) {
+        return Backend::Metal;
     }
     // Without measurements: a dedicated GPU beats the CPU, an integrated one usually does not.
     if best_gpu(devices, "Vulkan").is_some_and(|d| d.kind == "gpu") {
