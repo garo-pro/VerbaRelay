@@ -30,7 +30,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-x25519-dalek = { version = "2", features = ["getrandom", "static_secrets", "zeroize"] }
+x25519-dalek = { version = "3", features = ["getrandom", "static_secrets", "zeroize"] }
 zeroize = { version = "1", features = ["derive"] }
 
 [profile.release]
