@@ -1,8 +1,9 @@
 //! Speed measurement with a bundled speech sample.
 //!
-//! The sample is the 11 second excerpt of John F. Kennedy's inaugural address
-//! that ships with whisper.cpp (a public domain recording). It is repeated three
-//! times so the measurement covers more than one 30 second Whisper window.
+//! The sample is the first two minutes of John F. Kennedy's inaugural address
+//! (1961, public domain, original recording of the JFK Library). It is long
+//! enough to cover several 30 second Whisper windows without repeating itself,
+//! so the score is not skewed by caching or repeated text.
 
 use std::path::Path;
 use std::time::Instant;
@@ -14,12 +15,12 @@ use verbarelay_protocol::messages::{Backend, BenchmarkResult};
 use crate::worker::WorkerHandle;
 
 const SAMPLE_WAV: &[u8] = include_bytes!("../assets/benchmark.wav");
-const REPEAT: usize = 3;
+/// Length of the uncounted warm-up run: the start of the sample.
+const WARMUP_SECONDS: usize = 11;
 
 /// Decodes the bundled 16 kHz mono 16-bit WAV file.
 pub fn sample_pcm() -> anyhow::Result<Vec<i16>> {
-    let data = parse_wav_16k_mono(SAMPLE_WAV)?;
-    Ok(data.iter().copied().cycle().take(data.len() * REPEAT).collect())
+    parse_wav_16k_mono(SAMPLE_WAV)
 }
 
 fn parse_wav_16k_mono(bytes: &[u8]) -> anyhow::Result<Vec<i16>> {
@@ -54,7 +55,8 @@ pub async fn measure(worker: &mut WorkerHandle, model_name: &str) -> anyhow::Res
     let audio_ms = pcm.len() as u64 * 1000 / u64::from(verbarelay_protocol::SAMPLE_RATE);
     let cancel = CancellationToken::new();
     // Warm-up: the first run includes one-time GPU setup costs.
-    let warmup = &pcm[..pcm.len() / REPEAT];
+    let warmup_len = (WARMUP_SECONDS * verbarelay_protocol::SAMPLE_RATE as usize).min(pcm.len());
+    let warmup = &pcm[..warmup_len];
     worker
         .transcribe(warmup, Some("en".into()), false, &cancel, |_| {})
         .await?;
@@ -89,6 +91,7 @@ mod tests {
     #[test]
     fn bundled_sample_is_valid() {
         let pcm = super::sample_pcm().unwrap();
-        assert_eq!(pcm.len(), 16_000 * 11 * 3);
+        let seconds = pcm.len() / 16_000;
+        assert!((100..=130).contains(&seconds), "sample is {seconds} s long");
     }
 }

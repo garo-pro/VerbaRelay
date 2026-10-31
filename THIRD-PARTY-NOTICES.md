@@ -28,7 +28,7 @@ The CUDA package contains `cudart`, `cublas` and `cublasLt`, redistributed under
 
 ## Benchmark sample
 
-`crates/client/assets/benchmark.wav` is the 11 second excerpt of John F. Kennedy's inaugural address (1961) distributed with whisper.cpp. The recording is a work of the United States government and in the public domain.
+`crates/client/assets/benchmark.wav` is the first two minutes of John F. Kennedy's inaugural address (1961), cut from the original recording published by the John F. Kennedy Presidential Library & Museum (https://archive.org/details/JohnF.KennedyInauguralAddress). The recording is a work of the United States government and in the public domain.
 
 ## Whisper models
 
