@@ -106,9 +106,24 @@ pub async fn connect(
 async fn run_peer(app: SharedState, peer: PeerRow, public_key: [u8; 32], socket: WebSocket) {
     let (mut sink, mut stream) = socket.split();
 
-    // The first message must be a hello.
+    // The first message must be a hello. A hello that does not parse (for example a client that
+    // reports a backend this server does not know yet) is answered with a close reason, so the
+    // client can show why instead of timing out with "no welcome".
     let hello = match tokio::time::timeout(Duration::from_secs(15), stream.next()).await {
-        Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<PeerMessage>(&text).ok(),
+        Ok(Some(Ok(Message::Text(text)))) => match serde_json::from_str::<PeerMessage>(&text) {
+            Ok(message) => Some(message),
+            Err(e) => {
+                warn!(peer = %peer.name, "unreadable hello: {e}");
+                let _ = sink
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4000,
+                        reason: "unreadable hello, client and server versions differ; update the server"
+                            .into(),
+                    })))
+                    .await;
+                return;
+            }
+        },
         _ => None,
     };
     let Some(PeerMessage::Hello {

@@ -266,6 +266,15 @@ mod tests {
     }
 
     #[test]
+    fn metal_backend_roundtrips_in_json() {
+        // An older server without `Metal` cannot parse this and used to drop the hello silently.
+        let json = serde_json::to_string(&Backend::Metal).unwrap();
+        assert_eq!(json, "\"metal\"");
+        assert_eq!(serde_json::from_str::<Backend>(&json).unwrap(), Backend::Metal);
+        assert!(serde_json::from_str::<Backend>("\"unknown\"").is_err());
+    }
+
+    #[test]
     fn benchmark_speed() {
         let b = BenchmarkResult {
             model: "tiny".into(),
