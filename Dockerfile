@@ -5,7 +5,7 @@
 #   cp config/server.example.toml config/server.toml   # then edit it
 #   docker run -d -p 8443:8443 -v ./config:/etc/verbarelay:ro -v verbarelay-data:/var/lib/verbarelay verbarelay-server
 
-FROM rust:1.98-slim-trixie AS build
+FROM rust:1.99-slim-trixie AS build
 # CMake and make build the bundled libopus.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake make \
