@@ -224,9 +224,12 @@ jobs:
     name: Client (macOS)
     needs: meta
     # Apple Silicon: the engine runs on Metal with the Accelerate/BLAS fallback.
-    runs-on: macos-14
+    # Build on the newest image but keep the minimum macOS version fixed, so a runner
+    # upgrade does not silently raise what the client requires.
+    runs-on: macos-latest
     env:
       VERBARELAY_CHANNEL: ${{ needs.meta.outputs.channel }}
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -238,11 +241,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: dist/engine
-          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-metal-1
+          key: engine-${{ runner.os }}-arm64-${{ hashFiles('engine/**') }}-metal-2
       - name: Native engine (Metal)
         if: steps.engine-cache.outputs.cache-hit != 'true'
         run: |
-          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_CPU_ALL_VARIANTS=OFF -DGGML_METAL=ON
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DVR_CPU_ALL_VARIANTS=OFF -DGGML_METAL=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build build/engine --parallel
           cmake --install build/engine --prefix dist/engine
       - name: Client
