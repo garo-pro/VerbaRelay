@@ -117,8 +117,7 @@ async fn run_peer(app: SharedState, peer: PeerRow, public_key: [u8; 32], socket:
                 let _ = sink
                     .send(Message::Close(Some(CloseFrame {
                         code: 4000,
-                        reason: "unreadable hello, client and server versions differ; update the server"
-                            .into(),
+                        reason: "unreadable hello, client and server versions differ; update the server".into(),
                     })))
                     .await;
                 return;

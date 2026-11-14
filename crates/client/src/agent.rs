@@ -343,8 +343,7 @@ impl Agent {
         }) = welcome
         else {
             return SessionEnd::Disconnected(
-                "no welcome from the server (it may be older than this client; update the server)"
-                    .into(),
+                "no welcome from the server (it may be older than this client; update the server)".into(),
             );
         };
         info!(%peer_id, %server_version, backend = %self.config.backend, %accelerator, "connected to the server");
