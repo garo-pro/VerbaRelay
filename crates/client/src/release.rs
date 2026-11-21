@@ -238,11 +238,13 @@ pub fn extract_zip(archive: &Path, dest: &Path) -> anyhow::Result<Vec<PathBuf>> 
     let mut files = Vec::new();
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
+        // `name()` is fallible, so report the raw bytes instead.
+        let name = String::from_utf8_lossy(entry.name_raw()).into_owned();
         let Some(relative) = entry.enclosed_name() else {
-            bail!("archive entry with an unsafe path: {}", entry.name());
+            bail!("archive entry with an unsafe path: {name}");
         };
         if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
-            bail!("archive entry with an unsafe path: {}", entry.name());
+            bail!("archive entry with an unsafe path: {name}");
         }
         let out = dest.join(&relative);
         if entry.is_dir() {
